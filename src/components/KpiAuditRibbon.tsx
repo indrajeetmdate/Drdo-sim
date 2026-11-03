@@ -106,14 +106,18 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
             <span className="text-[10px] text-slate-400">kg net</span>
           </div>
           <div className="text-[10px] text-slate-400 font-mono truncate">
-            FC: {summary.fc_total_output_kwh.toFixed(1)} kWh ({summary.fc_start_cycles} cyc)
+            {summary.fc_enabled !== false ? (
+              `FC: ${summary.fc_total_output_kwh.toFixed(1)} kWh (${summary.fc_start_cycles} cyc)`
+            ) : (
+              <span className="text-amber-400/90 font-semibold">P2G Mode (FC Disabled)</span>
+            )}
           </div>
         </div>
 
-        {/* Peak Tank Pressure & DI Water */}
+        {/* Peak Tank Pressure & Tedlar Bags */}
         <div className="bg-[#131b2c] border border-sky-500/20 rounded p-2 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 font-mono text-[10px] uppercase tracking-wider">
-            <span>Peak Pressure & Water</span>
+            <span>H₂ Storage & Tedlar</span>
             <Gauge className="w-3.5 h-3.5 text-sky-400" />
           </div>
           <div className="mt-1 flex items-baseline gap-1">
@@ -121,10 +125,23 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
               {summary.peak_tank_pressure_bar.toFixed(1)}
             </span>
             <span className="text-[10px] text-slate-400">bar</span>
+            {summary.tedlar_bags_enabled && summary.total_tedlar_volume_liters > 0 && (
+              <span className="text-[10px] text-cyan-300 font-mono ml-auto font-bold">
+                +{summary.total_tedlar_volume_liters.toFixed(1)}L
+              </span>
+            )}
           </div>
           <div className="text-[10px] text-slate-400 font-mono truncate flex items-center gap-1">
-            <Droplets className="w-3 h-3 text-sky-400 inline" />
-            <span>{summary.total_di_water_consumed_l.toFixed(1)} L DI H₂O</span>
+            {summary.tedlar_bags_enabled ? (
+              <span className="text-cyan-300 truncate">
+                Tedlar: {summary.total_tedlar_volume_liters.toFixed(1)} L ({summary.total_tedlar_bags_10l_count} bags)
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 truncate">
+                <Droplets className="w-3 h-3 text-sky-400 inline" />
+                <span>{summary.total_di_water_consumed_l.toFixed(1)} L DI H₂O</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -209,7 +226,16 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
           <span className="text-slate-700 hidden sm:inline">•</span>
           <div className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-sm bg-purple-500 inline-block"></span>
-            <span>State 4 (FC Extender): {summary.time_in_state_4_hours.toFixed(1)} h ({(summary.time_in_state_4_hours / (summary.total_steps * summary.dt_hours) * 100).toFixed(0)}%)</span>
+            <span>
+              State 4 (FC Extender):{' '}
+              {summary.fc_enabled !== false
+                ? `${summary.time_in_state_4_hours.toFixed(1)} h (${(
+                    (summary.time_in_state_4_hours /
+                      (summary.total_steps * summary.dt_hours)) *
+                    100
+                  ).toFixed(0)}%)`
+                : 'OFF (P2G Mode)'}
+            </span>
           </div>
         </div>
 
