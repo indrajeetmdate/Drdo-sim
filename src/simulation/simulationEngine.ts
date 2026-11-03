@@ -145,6 +145,31 @@ export function calculateH2TankVolumeForMass(
 }
 
 /**
+ * Automatically adjust geometric tank volume and safe initial stored mass when pressure class changes
+ * Prevents overpressure lockouts (e.g. 1 bar atmospheric or 10 bar buffer)
+ */
+export function adjustTankForPressure(
+  newPressureBar: number,
+  currentParams: SystemParameters
+): Partial<SystemParameters> {
+  const targetBufferKg = currentParams.scale === '1:10' ? 0.30 : 3.0;
+  const recommendedVolL = calculateH2TankVolumeForMass(targetBufferKg, newPressureBar, 20.0);
+  const roundedVolL = Math.max(10, Math.ceil(recommendedVolL / 5) * 5);
+  const newVolM3 = roundedVolL / 1000.0;
+  
+  const maxCapKg = calculateH2TankMaxCapacity(newPressureBar, newVolM3, 20.0);
+  const newInitKg = Math.round(maxCapKg * 0.25 * 1000) / 1000;
+  const newMinKg = Math.round(maxCapKg * 0.05 * 1000) / 1000;
+
+  return {
+    tank_p_max_bar: newPressureBar,
+    tank_volume_m3: newVolM3,
+    tank_m_h2_init_kg: newInitKg,
+    tank_m_h2_min_kg: newMinKg,
+  };
+}
+
+/**
  * Standard Pressure Preset Classes for Hydrogen Storage
  */
 export const TANK_PRESSURE_PRESETS = [
@@ -201,6 +226,17 @@ export function allocateH2Production(
     // Tank is at capacity: throttle electrolyzer to match remaining room
     if (m_to_tank > 0.0) {
       P_elec_bus = (m_to_tank * params.sec_elec_kwh_per_kg) / (params.eta_elec_dcdc * dt_hours);
+      if (P_elec_bus * params.eta_elec_dcdc < P_elec_min) {
+        // Below minimum safe turndown threshold - shutdown electrolyzer
+        return {
+          p_elec_bus: 0.0,
+          m_h2_prod: 0.0,
+          m_to_tank: 0.0,
+          v_di_water: 0.0,
+          v_o2: 0.0,
+          p_curtailed: p_surplus_kw,
+        };
+      }
       p_curtailed = Math.max(0.0, p_surplus_kw - P_elec_bus);
     } else {
       return {

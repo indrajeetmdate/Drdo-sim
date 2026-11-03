@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { SystemParameters, PresetScenario } from '../types/microgrid';
 import {
+  adjustTankForPressure,
+  calculateH2TankVolumeForMass,
+} from '../simulation/simulationEngine';
+import {
+  AlertTriangle,
   Battery,
   ChevronDown,
   ChevronRight,
@@ -402,6 +407,45 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                   className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
                 />
               </div>
+
+              {/* Quick Scaler Buttons for Electrolyzer */}
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                {[0.5, 1.0, 2.0, 5.0, 8.0, 10.0].map((kw) => (
+                  <button
+                    key={kw}
+                    onClick={() => updateNumeric('elec_rated_kw', kw)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
+                      Math.abs(params.elec_rated_kw - kw) < 0.05
+                        ? 'bg-cyan-600 text-white font-bold border-cyan-400'
+                        : 'bg-[#162136] hover:bg-cyan-950 text-cyan-300 border-slate-700'
+                    }`}
+                  >
+                    {kw}kW
+                  </button>
+                ))}
+              </div>
+
+              {/* Auto-Match Electrolyzer to Solar Surplus Button */}
+              {params.pv_peak_kw > params.elec_rated_kw * 1.5 && (
+                <button
+                  onClick={() => {
+                    const peakSurplus = Math.max(0.5, Math.round((params.pv_peak_kw * 0.82) * 10) / 10);
+                    const h2PerHourKg = (peakSurplus * 0.94) / params.sec_elec_kwh_per_kg;
+                    const targetDailyH2Kg = h2PerHourKg * 5.0;
+                    const targetVolL = Math.max(20, Math.ceil(calculateH2TankVolumeForMass(targetDailyH2Kg, params.tank_p_max_bar, 20.0) / 5) * 5);
+                    onChangeParams({
+                      ...params,
+                      elec_rated_kw: peakSurplus,
+                      tank_volume_m3: targetVolL / 1000.0,
+                    });
+                  }}
+                  className="w-full flex items-center justify-center gap-1 py-1 px-1.5 bg-gradient-to-r from-cyan-700 to-teal-700 hover:from-cyan-600 hover:to-teal-600 text-white rounded text-[10px] font-bold shadow transition"
+                >
+                  <Zap className="w-3 h-3 text-yellow-300" />
+                  <span>⚡ Match Elec ({(params.pv_peak_kw * 0.82).toFixed(1)}kW) to Solar</span>
+                </button>
+              )}
+
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-400">Turndown k_min [%]:</span>
                 <input
@@ -438,7 +482,11 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                     value={params.tank_p_max_bar}
                     onChange={(e) => {
                       const newP = parseFloat(e.target.value) || 30;
-                      updateNumeric('tank_p_max_bar', newP);
+                      const updates = adjustTankForPressure(newP, params);
+                      onChangeParams({
+                        ...params,
+                        ...updates,
+                      });
                     }}
                     className="bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-sky-300 font-bold focus:outline-none focus:border-cyan-400"
                   >
@@ -458,7 +506,14 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                     min="1"
                     max="1000"
                     value={params.tank_p_max_bar}
-                    onChange={(e) => updateNumeric('tank_p_max_bar', parseFloat(e.target.value) || 30)}
+                    onChange={(e) => {
+                      const newP = parseFloat(e.target.value) || 30;
+                      const updates = adjustTankForPressure(newP, params);
+                      onChangeParams({
+                        ...params,
+                        ...updates,
+                      });
+                    }}
                     className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
                   />
                 </div>

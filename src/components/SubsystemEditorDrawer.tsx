@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  adjustTankForPressure,
   calculateH2TankMaxCapacity,
   calculateH2TankPressure,
   calculateH2TankVolumeForMass,
@@ -183,21 +184,51 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   className="w-full accent-amber-500 cursor-pointer"
                 />
                 {/* Quick Scalers */}
-                <div className="flex items-center gap-1.5 pt-1">
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
                   <span className="text-[10px] text-slate-500">Quick Scale:</span>
-                  {[0.5, 0.8, 1.0, 1.2, 1.5, 2.0].map((mult) => (
+                  {[0.5, 1.0, 1.5, 2.0, 5.0, 10.0].map((val) => (
                     <button
-                      key={mult}
+                      key={val}
                       onClick={() => {
-                        const base = params.scale === '1:10' ? 1.2 : 12.0;
-                        updateNumeric('pv_peak_kw', Math.round(base * mult * 10) / 10);
+                        updateNumeric('pv_peak_kw', val);
                       }}
-                      className="px-1.5 py-0.5 rounded bg-[#162136] hover:bg-amber-950 text-[10px] text-amber-300 border border-slate-700 transition"
+                      className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
+                        Math.abs(params.pv_peak_kw - val) < 0.05
+                          ? 'bg-amber-600 text-white font-bold border-amber-400'
+                          : 'bg-[#162136] hover:bg-amber-950 text-amber-300 border-slate-700'
+                      }`}
                     >
-                      {mult}x
+                      {val} kW
                     </button>
                   ))}
                 </div>
+
+                {params.pv_peak_kw > params.elec_rated_kw * 2 && (
+                  <div className="mt-2 p-2 bg-amber-950/60 border border-amber-500/40 rounded space-y-1 text-[10px]">
+                    <div className="flex items-center gap-1 text-amber-300 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Electrolyzer Sizing Bottleneck</span>
+                    </div>
+                    <p className="text-amber-200/90 leading-tight">
+                      Solar array ({params.pv_peak_kw.toFixed(1)} kW) produces up to ~{(params.pv_peak_kw * 0.8).toFixed(1)} kW surplus, which exceeds the current {params.elec_rated_kw.toFixed(1)} kW electrolyzer. Excess power will be curtailed.
+                    </p>
+                    <button
+                      onClick={() => {
+                        const targetElecKw = Math.max(0.5, Math.round((params.pv_peak_kw * 0.8) * 10) / 10);
+                        const h2PerHourKg = (targetElecKw * 0.94) / params.sec_elec_kwh_per_kg;
+                        const targetVolL = Math.max(20, Math.ceil(calculateH2TankVolumeForMass(h2PerHourKg * 5, params.tank_p_max_bar, 20.0) / 5) * 5);
+                        onChangeParams({
+                          ...params,
+                          elec_rated_kw: targetElecKw,
+                          tank_volume_m3: targetVolL / 1000.0,
+                        });
+                      }}
+                      className="mt-1 w-full py-1 rounded bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black font-bold text-[10px] transition shadow"
+                    >
+                      ⚡ Auto-Scale Electrolyzer & Tank to Match Solar
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Temperature Derating Coefficient */}
@@ -434,6 +465,23 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   onChange={(e) => updateNumeric('bess_cap_kwh', parseFloat(e.target.value) || 3.072)}
                   className="w-full accent-emerald-500 cursor-pointer"
                 />
+                {/* Quick Scalers */}
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                  <span className="text-[10px] text-slate-500">Quick Scale:</span>
+                  {[1.0, 2.0, 3.0, 5.0, 10.0, 30.0].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => updateNumeric('bess_cap_kwh', val)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
+                        Math.abs(params.bess_cap_kwh - val) < 0.1
+                          ? 'bg-emerald-600 text-white font-bold border-emerald-400'
+                          : 'bg-[#162136] hover:bg-emerald-950 text-emerald-300 border-slate-700'
+                      }`}
+                    >
+                      {val} kWh
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Max Charge Power */}
@@ -526,8 +574,20 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 </div>
                 <div>
                   <span className="text-slate-400 text-[10px] block">Operating Status:</span>
-                  <span className="font-bold text-cyan-400">
-                    {currentStep && currentStep.p_elec_bus_kw > 0 ? 'ACTIVE H₂ PROD' : 'TURNDOWN OFF'}
+                  <span className={`font-bold ${
+                    currentStep && currentStep.p_elec_bus_kw > 0
+                      ? 'text-cyan-400'
+                      : currentTankP >= params.tank_p_max_bar
+                      ? 'text-amber-400'
+                      : 'text-slate-400'
+                  }`}>
+                    {currentStep && currentStep.p_elec_bus_kw > 0
+                      ? 'ACTIVE H₂ PROD'
+                      : currentTankP >= params.tank_p_max_bar
+                      ? 'TANK FULL (OVERPRESSURE)'
+                      : currentStep && currentStep.p_pv_bus_kw === 0
+                      ? 'STANDBY (NIGHT)'
+                      : 'TURNDOWN OFF / STANDBY'}
                   </span>
                 </div>
               </div>
@@ -549,12 +609,50 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 <input
                   type="range"
                   min="0.1"
-                  max="15.0"
+                  max="20.0"
                   step="0.1"
                   value={params.elec_rated_kw}
                   onChange={(e) => updateNumeric('elec_rated_kw', parseFloat(e.target.value) || 0.5)}
                   className="w-full accent-cyan-500 cursor-pointer"
                 />
+                {/* Quick Scalers */}
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                  <span className="text-[10px] text-slate-500">Quick Scale:</span>
+                  {[0.5, 1.0, 2.0, 5.0, 8.0, 10.0].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => updateNumeric('elec_rated_kw', val)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
+                        Math.abs(params.elec_rated_kw - val) < 0.05
+                          ? 'bg-cyan-600 text-white font-bold border-cyan-400'
+                          : 'bg-[#162136] hover:bg-cyan-950 text-cyan-300 border-slate-700'
+                      }`}
+                    >
+                      {val} kW
+                    </button>
+                  ))}
+                </div>
+
+                {/* Auto-Match Electrolyzer Button */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      const peakSurplus = Math.max(0.5, Math.round((params.pv_peak_kw * 0.82) * 10) / 10);
+                      const h2PerHourKg = (peakSurplus * 0.94) / params.sec_elec_kwh_per_kg;
+                      const targetDailyH2Kg = h2PerHourKg * 5.0;
+                      const targetVolL = Math.max(20, Math.ceil(calculateH2TankVolumeForMass(targetDailyH2Kg, params.tank_p_max_bar, 20.0) / 5) * 5);
+                      onChangeParams({
+                        ...params,
+                        elec_rated_kw: peakSurplus,
+                        tank_volume_m3: targetVolL / 1000.0,
+                      });
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white rounded font-bold text-[11px] shadow transition"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                    <span>⚡ Auto-Match Electrolyzer & Tank to Solar Surplus</span>
+                  </button>
+                </div>
               </div>
 
               {/* Specific Energy Consumption */}
@@ -635,6 +733,18 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   <span className="text-slate-200 font-bold">{currentZ.toFixed(3)}</span>
                 </div>
               </div>
+
+              {currentTankP >= params.tank_p_max_bar && (
+                <div className="mt-2 p-2 bg-rose-950/70 border border-rose-500/50 rounded space-y-1 text-[10px]">
+                  <div className="flex items-center gap-1 text-rose-300 font-bold">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>H₂ Storage Full ({params.tank_p_max_bar} bar Max Reached)</span>
+                  </div>
+                  <p className="text-rose-200/90 leading-tight">
+                    Electrolyzer has throttled to 0 W to prevent overpressure. Increase tank volume (L) or choose a higher pressure class (200 / 350 / 700 bar) to store more H₂.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Pressure Class Selector */}
@@ -650,7 +760,11 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                     <button
                       key={preset.value}
                       onClick={() => {
-                        updateNumeric('tank_p_max_bar', preset.value);
+                        const updates = adjustTankForPressure(preset.value, params);
+                        onChangeParams({
+                          ...params,
+                          ...updates,
+                        });
                       }}
                       className={`p-1.5 rounded text-left transition border ${
                         isSelected
@@ -684,7 +798,14 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   max="1000"
                   step="1"
                   value={params.tank_p_max_bar}
-                  onChange={(e) => updateNumeric('tank_p_max_bar', parseFloat(e.target.value) || 30)}
+                  onChange={(e) => {
+                    const newP = parseFloat(e.target.value) || 30;
+                    const updates = adjustTankForPressure(newP, params);
+                    onChangeParams({
+                      ...params,
+                      ...updates,
+                    });
+                  }}
                   className="w-24 bg-[#162136] border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-sky-300 font-bold focus:outline-none focus:border-cyan-400"
                 />
               </div>

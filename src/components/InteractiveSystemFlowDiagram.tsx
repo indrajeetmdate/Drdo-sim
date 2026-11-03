@@ -38,6 +38,7 @@ import {
   SubsystemId,
 } from './SubsystemEditorDrawer';
 import {
+  adjustTankForPressure,
   calculateH2TankMaxCapacity,
   calculateH2TankPressure,
   calculateH2TankVolumeForMass,
@@ -146,6 +147,11 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   const p_fc_stack_w = fcIsActive ? Math.round(p_fc_w / params.eta_fc_dcdc) : 0;
   const i_fc_stack_a = fcIsActive ? (p_fc_stack_w / v_fc_stack).toFixed(1) : '0.0';
 
+  // Curtailed power & current
+  const p_curtailed_w = Math.round(activeStep.p_curtailed_kw * 1000);
+  const i_curtailed_a = activeStep.i_curtailed_a;
+  const isTankFull = activeStep.p_tank_bar >= params.tank_p_max_bar;
+
   // Material Flow variables (rates per hour, dt = 0.25h)
   const dt_h = 0.25;
   const h2_prod_rate_gh = ((activeStep.m_h2_prod_kg * 1000) / dt_h).toFixed(1);
@@ -239,7 +245,41 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
             <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
               Step {activeStep.step}/{allSteps.length}
             </span>
+            <span
+              className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
+                p_pv_w > 0
+                  ? 'bg-amber-950/80 text-amber-300 border border-amber-600/50'
+                  : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              {p_pv_w > 0 ? `☀️ Day (${p_pv_w}W)` : '🌙 Night'}
+            </span>
           </div>
+
+          {/* Quick Jump to Midday Solar Peak (12:00) */}
+          <button
+            onClick={() => {
+              if (onSelectStepIndex && allSteps.length > 0) {
+                let bestIdx = 0;
+                let maxPv = -1;
+                allSteps.forEach((s, idx) => {
+                  if (s.p_pv_bus_kw > maxPv) {
+                    maxPv = s.p_pv_bus_kw;
+                    bestIdx = idx;
+                  }
+                });
+                if (maxPv <= 0) {
+                  bestIdx = allSteps.findIndex((s) => s.hour >= 12.0) || 48;
+                }
+                onSelectStepIndex(Math.max(0, bestIdx));
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-[#16253d] hover:bg-amber-950/80 text-amber-300 border border-amber-600/50 text-[10px] font-mono font-bold transition shadow"
+            title="Jump directly to solar peak (midday) to view solar surplus flowing into PEM electrolyzer"
+          >
+            <Sun className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Midday Peak</span>
+          </button>
 
           {/* Playback speed toggle */}
           <button
@@ -261,7 +301,16 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
             <span className="text-slate-400 text-[10px] hidden sm:inline">Pressure:</span>
             <select
               value={params.tank_p_max_bar}
-              onChange={(e) => handleUpdateParam('tank_p_max_bar', parseFloat(e.target.value) || 30)}
+              onChange={(e) => {
+                const newP = parseFloat(e.target.value) || 30;
+                const updates = adjustTankForPressure(newP, params);
+                if (onChangeParams) {
+                  onChangeParams({
+                    ...params,
+                    ...updates,
+                  });
+                }
+              }}
               className="bg-[#0b1322] border border-sky-900 rounded px-1.5 py-0.5 text-[10px] text-sky-300 font-bold"
             >
               <option value={1}>1 bar (Atmos)</option>
@@ -818,6 +867,19 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                   />
                 )}
 
+                {/* Branch 6: 48V Busbar Curtailment / Throttled Surplus Line */}
+                {p_curtailed_w > 0 && (
+                  <path
+                    d="M 530 400 L 530 445"
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeWidth="3.5"
+                    strokeDasharray="4 2"
+                    className={animateFlow ? 'flow-active-forward' : ''}
+                    markerEnd="url(#arrow-power-amber)"
+                  />
+                )}
+
                 {/* ========================================================= */}
                 {/* ELECTRICAL POWER READOUT BADGES: VOLT, AMP, WATT & DC     */}
                 {/* ========================================================= */}
@@ -936,6 +998,29 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                     20V DC | {i_elec_stack_a}A | {p_elec_stack_w}W
                   </text>
                 </g>
+
+                {/* Branch 6: Curtailment / Throttling Badge */}
+                {p_curtailed_w > 0 && (
+                  <g
+                    transform="translate(460, 420)"
+                    className="cursor-pointer group"
+                    onClick={() => setSelectedSubsystem('elec')}
+                  >
+                    <rect width="140" height="42" rx="4" fill="#1c1106" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="3 2" />
+                    <text x="70" y="11" fill="#fef3c7" fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                      BRANCH 6: CURTAILED [DC]
+                    </text>
+                    <text x="70" y="21" fill="#fde68a" fontSize="8.5" fontFamily="monospace" textAnchor="middle">
+                      {v_bus.toFixed(2)}V | {i_curtailed_a.toFixed(1)}A DC
+                    </text>
+                    <text x="70" y="30" fill="#f59e0b" fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                      {p_curtailed_w} W DISSIPATED
+                    </text>
+                    <text x="70" y="38" fill="#d97706" fontSize="7" fontFamily="monospace" textAnchor="middle">
+                      {isTankFull ? 'H₂ TANK FULL (30b)' : `STACK CAPPED (${params.elec_rated_kw}kW)`}
+                    </text>
+                  </g>
+                )}
 
                 {/* Fuel Cell Branch Stack Side */}
                 <g transform="translate(805, 548)">
@@ -1087,6 +1172,16 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               <text x="50" y="52" fill="#cffafe" fontSize="8.5" fontFamily="monospace" textAnchor="middle">
                 T4: ELEC (-)
               </text>
+
+              {/* Tap 6: Curtailment / Surplus Dump Tap (x=530 -> cx=250) */}
+              {p_curtailed_w > 0 && (
+                <>
+                  <circle cx="250" cy="20" r="4.5" fill="#f59e0b" stroke="#78350f" strokeWidth="1.5" />
+                  <text x="250" y="52" fill="#fef3c7" fontSize="8" fontFamily="monospace" textAnchor="middle">
+                    T6: DUMP (-)
+                  </text>
+                </>
+              )}
 
               {/* Tap 3: BESS BiDir Tap (x=650 -> cx=370) */}
               <circle cx="370" cy="20" r="5" fill="#10b981" stroke="#064e3b" strokeWidth="2" />
@@ -1358,9 +1453,15 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               <text x="10" y="82" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
                 Min: {(params.elec_k_turndown * 100).toFixed(0)}% (Safety)
               </text>
-              <rect x="8" y="98" width="124" height="15" rx="2" fill="#164e63" />
-              <text x="70" y="109" fill="#67e8f9" fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                {elecIsActive ? 'ACTIVE H₂ PROD' : 'TURNDOWN OFF'}
+              <rect x="8" y="98" width="124" height="15" rx="2" fill={elecIsActive ? '#164e63' : isTankFull ? '#78350f' : '#1e293b'} />
+              <text x="70" y="109" fill={elecIsActive ? '#67e8f9' : isTankFull ? '#fbbf24' : '#94a3b8'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                {elecIsActive
+                  ? 'ACTIVE H₂ PROD'
+                  : isTankFull
+                  ? '⚠️ TANK FULL (30b)'
+                  : activeStep.p_pv_bus_kw === 0
+                  ? 'STANDBY (NIGHT)'
+                  : 'TURNDOWN OFF'}
               </text>
             </g>
 
@@ -1376,13 +1477,13 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                 height="170"
                 rx="8"
                 fill="#091424"
-                stroke={selectedSubsystem === 'tank' ? '#38bdf8' : '#0284c7'}
-                strokeWidth={selectedSubsystem === 'tank' ? '3' : '2'}
+                stroke={selectedSubsystem === 'tank' ? '#38bdf8' : isTankFull ? '#f59e0b' : '#0284c7'}
+                strokeWidth={selectedSubsystem === 'tank' ? '3' : isTankFull ? '2.5' : '2'}
                 className="transition group-hover:stroke-sky-300 shadow-xl"
               />
-              <rect x="0" y="0" width="180" height="26" rx="8" fill="#0369a1" />
+              <rect x="0" y="0" width="180" height="26" rx="8" fill={isTankFull ? '#b45309' : '#0369a1'} />
               <text x="90" y="17" fill="#f0f9ff" fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                H₂ STORAGE VESSEL
+                {isTankFull ? '⚠️ H₂ TANK FULL (OVERPRESSURE)' : 'H₂ STORAGE VESSEL'}
               </text>
               <Gauge className="text-sky-300" x="10" y="35" width="18" height="18" />
               <text x="34" y="49" fill="#bae6fd" fontSize="12" fontWeight="bold" fontFamily="monospace">
@@ -1559,6 +1660,38 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
             </g>
           </svg>
         </div>
+
+        {/* Floating Nighttime Indicator with Instant Midday Jump */}
+        {activeStep.p_pv_bus_kw === 0 && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-[#0c1424]/95 backdrop-blur border border-amber-500/60 rounded-full px-3.5 py-1.5 flex items-center gap-2.5 text-[11px] font-mono shadow-2xl">
+            <span className="text-amber-300 flex items-center gap-1 font-semibold">
+              <span>🌙</span>
+              <span>Viewing Night ({activeStep.timestamp}) - Solar is 0 W</span>
+            </span>
+            <button
+              onClick={() => {
+                if (onSelectStepIndex && allSteps.length > 0) {
+                  let bestIdx = 0;
+                  let maxPv = -1;
+                  allSteps.forEach((s, idx) => {
+                    if (s.p_pv_bus_kw > maxPv) {
+                      maxPv = s.p_pv_bus_kw;
+                      bestIdx = idx;
+                    }
+                  });
+                  if (maxPv <= 0) {
+                    bestIdx = allSteps.findIndex((s) => s.hour >= 12.0) || 48;
+                  }
+                  onSelectStepIndex(Math.max(0, bestIdx));
+                }
+              }}
+              className="text-cyan-300 hover:text-white font-bold underline flex items-center gap-1 bg-[#132238] px-2 py-0.5 rounded border border-cyan-500/40"
+            >
+              <Sun className="w-3.5 h-3.5 text-yellow-400" />
+              <span>Jump to Midday (12:00)</span>
+            </button>
+          </div>
+        )}
 
         {/* Embedded Subsystem Parameter Drawer */}
         <SubsystemEditorDrawer

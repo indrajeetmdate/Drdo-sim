@@ -93,10 +93,13 @@ export default function App() {
         setSummary(result.summary);
         setSolverExecutionTimeMs(Math.round((tEnd - tStart) * 100) / 100);
 
-        // Keep active step in sync
+        // Keep active step in sync (default to midday solar peak on initial load so diagram is alive)
         if (result.steps.length > 0) {
           setActiveStep((prev) => {
-            if (!prev) return result.steps[0];
+            if (!prev) {
+              const middayStep = result.steps.find((s) => s.hour >= 12.0 && s.p_pv_bus_kw > 0);
+              return middayStep || result.steps[Math.floor(result.steps.length / 2)] || result.steps[0];
+            }
             const found = result.steps.find((s) => s.step === prev.step);
             return found || result.steps[0];
           });
@@ -131,10 +134,12 @@ export default function App() {
       setParams({
         ...DEFAULT_PARAMETERS_1_TO_10,
       });
+      setActiveStep(null);
     } else if (params.scale === '1:10') {
       setParams({
         ...DEFAULT_PARAMETERS_1_TO_1,
       });
+      setActiveStep(null);
     }
   };
 
