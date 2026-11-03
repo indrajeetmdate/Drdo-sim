@@ -135,6 +135,14 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   const v_pv_array = activeStep.p_pv_bus_kw > 0 ? 98.4 : 0.0;
   const i_pv_array = activeStep.p_pv_bus_kw > 0 ? (p_pv_w / v_pv_array).toFixed(1) : '0.0';
 
+  // Tedlar Bags & Optional Fuel Cell status
+  const isFcEnabled = params.fc_enabled !== false;
+  const isTedlarEnabled = params.tedlar_bags_enabled !== false;
+  const tedlarVolumeL = (activeStep.v_tedlar_liters || 0).toFixed(1);
+  const tedlarBagsCount = activeStep.tedlar_bags_count || 0;
+  const tedlarChunkSize = params.tedlar_bag_chunk_l || 10;
+  const tedlarIsReceiving = (activeStep.m_h2_tedlar_kg || 0) > 0 && elecIsActive;
+
   return (
     <div className="flex flex-col h-full w-full bg-[#070c16] text-slate-200 select-none overflow-hidden rounded border border-slate-800">
       {/* Top Diagram Toolbar: Playback, Time Scrubber, Layer Filters */}
@@ -528,22 +536,53 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               />
               {/* Hydrogen Production: Electrolyzer -> H2 Tank */}
               <path
-                d="M 260 620 L 390 620"
+                d="M 260 620 L 360 620"
                 fill="none"
                 stroke="#06b6d4"
                 strokeWidth="3.8"
                 className={elecIsActive && animateFlow ? 'flow-active-fluid' : ''}
                 markerEnd="url(#arrow-fluid-cyan)"
               />
+              {/* Excess H2 Diversion: Tank Manifold -> Atmospheric Tedlar Bags */}
+              {isTedlarEnabled && (
+                <path
+                  d="M 475 620 L 490 620"
+                  fill="none"
+                  stroke={tedlarIsReceiving ? '#38bdf8' : '#0284c7'}
+                  strokeWidth="3.5"
+                  className={tedlarIsReceiving && animateFlow ? 'flow-active-fluid' : ''}
+                  markerEnd="url(#arrow-fluid-cyan)"
+                />
+              )}
               {/* Hydrogen Fuel Supply: H2 Tank -> Pressure Regulator -> Fuel Cell */}
-              <path
-                d="M 510 620 L 650 620"
-                fill="none"
-                stroke="#06b6d4"
-                strokeWidth="3.8"
-                className={fcIsActive && animateFlow ? 'flow-active-fluid' : ''}
-                markerEnd="url(#arrow-fluid-cyan)"
-              />
+              {isFcEnabled ? (
+                <>
+                  <path
+                    d="M 615 620 L 635 620"
+                    fill="none"
+                    stroke="#06b6d4"
+                    strokeWidth="3.5"
+                    className={fcIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                    markerEnd="url(#arrow-fluid-cyan)"
+                  />
+                  <path
+                    d="M 665 620 L 680 620"
+                    fill="none"
+                    stroke="#06b6d4"
+                    strokeWidth="3.5"
+                    className={fcIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                    markerEnd="url(#arrow-fluid-cyan)"
+                  />
+                </>
+              ) : (
+                <path
+                  d="M 615 620 L 680 620"
+                  fill="none"
+                  stroke="#334155"
+                  strokeWidth="2"
+                  strokeDasharray="4 4"
+                />
+              )}
 
               {/* Material Flow Rate Text Badges */}
               {/* DI Water Badge */}
@@ -558,15 +597,28 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               </g>
 
               {/* H2 Production Badge */}
-              <g transform="translate(275, 580)">
-                <rect width="95" height="26" rx="4" fill="#0f172a" stroke="#06b6d4" strokeWidth="1" />
-                <text x="47.5" y="12" fill="#67e8f9" fontSize="8.5" fontFamily="monospace" textAnchor="middle">
+              <g transform="translate(265, 580)">
+                <rect width="90" height="26" rx="4" fill="#0f172a" stroke="#06b6d4" strokeWidth="1" />
+                <text x="45" y="12" fill="#67e8f9" fontSize="8.5" fontFamily="monospace" textAnchor="middle">
                   H₂ GAS GEN
                 </text>
-                <text x="47.5" y="22" fill="#22d3ee" fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                <text x="45" y="22" fill="#22d3ee" fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
                   {h2_prod_rate_gh} g/h H₂
                 </text>
               </g>
+
+              {/* Tedlar Bags Excess H2 Badge */}
+              {isTedlarEnabled && (
+                <g transform="translate(420, 520)">
+                  <rect width="115" height="26" rx="4" fill="#0c1322" stroke="#38bdf8" strokeWidth="1" />
+                  <text x="57.5" y="11" fill="#7dd3fc" fontSize="8" fontFamily="monospace" textAnchor="middle">
+                    EXCESS H₂ TO TEDLAR
+                  </text>
+                  <text x="57.5" y="21" fill="#38bdf8" fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    {tedlarVolumeL} L ({tedlarBagsCount} × {tedlarChunkSize}L)
+                  </text>
+                </g>
+              )}
 
               {/* O2 Vent Badge */}
               <g transform="translate(145, 750)">
@@ -577,13 +629,13 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               </g>
 
               {/* H2 Fuel Supply Badge */}
-              <g transform="translate(535, 580)">
-                <rect width="95" height="26" rx="4" fill="#0f172a" stroke="#06b6d4" strokeWidth="1" />
-                <text x="47.5" y="12" fill="#67e8f9" fontSize="8.5" fontFamily="monospace" textAnchor="middle">
-                  H₂ FUEL INLET
+              <g transform="translate(585, 580)">
+                <rect width="95" height="26" rx="4" fill="#0f172a" stroke={isFcEnabled ? '#06b6d4' : '#475569'} strokeWidth="1" />
+                <text x="47.5" y="12" fill={isFcEnabled ? '#67e8f9' : '#94a3b8'} fontSize="8.5" fontFamily="monospace" textAnchor="middle">
+                  {isFcEnabled ? 'H₂ FUEL INLET' : 'FC ISOLATED'}
                 </text>
-                <text x="47.5" y="22" fill="#22d3ee" fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  {h2_cons_rate_gh} g/h @ 1.5b
+                <text x="47.5" y="22" fill={isFcEnabled ? '#22d3ee' : '#64748b'} fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  {isFcEnabled ? `${h2_cons_rate_gh} g/h @ 1.5b` : 'P2G STANDALONE'}
                 </text>
               </g>
             </g>
@@ -695,23 +747,35 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               />
 
               {/* Branch 5: PEM Fuel Cell Stack -> Boost DC-DC */}
-              <path
-                d="M 750 590 L 750 560"
-                fill="none"
-                stroke={fcIsActive ? '#a855f7' : '#334155'}
-                strokeWidth={fcIsActive ? '4.5' : '2'}
-                className={fcIsActive && animateFlow ? 'flow-active-forward' : ''}
-                markerEnd="url(#arrow-power-purple)"
-              />
-              {/* Boost DC-DC -> 48V Busbar */}
-              <path
-                d="M 750 500 L 750 470 L 800 470 L 800 400"
-                fill="none"
-                stroke={fcIsActive ? '#a855f7' : '#334155'}
-                strokeWidth={fcIsActive ? '4.5' : '2'}
-                className={fcIsActive && animateFlow ? 'flow-active-forward' : ''}
-                markerEnd="url(#arrow-power-purple)"
-              />
+              {isFcEnabled ? (
+                <>
+                  <path
+                    d="M 745 590 L 745 560"
+                    fill="none"
+                    stroke={fcIsActive ? '#a855f7' : '#334155'}
+                    strokeWidth={fcIsActive ? '4.5' : '2'}
+                    className={fcIsActive && animateFlow ? 'flow-active-forward' : ''}
+                    markerEnd="url(#arrow-power-purple)"
+                  />
+                  {/* Boost DC-DC -> 48V Busbar */}
+                  <path
+                    d="M 750 500 L 750 470 L 800 470 L 800 400"
+                    fill="none"
+                    stroke={fcIsActive ? '#a855f7' : '#334155'}
+                    strokeWidth={fcIsActive ? '4.5' : '2'}
+                    className={fcIsActive && animateFlow ? 'flow-active-forward' : ''}
+                    markerEnd="url(#arrow-power-purple)"
+                  />
+                </>
+              ) : (
+                <path
+                  d="M 745 590 L 745 500 L 800 500 L 800 400"
+                  fill="none"
+                  stroke="#334155"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                />
+              )}
 
               {/* ========================================================= */}
               {/* EXACT POWER READOUT BADGES: VOLT, AMP, WATT & DC/AC TAGS  */}
@@ -834,29 +898,29 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
 
               {/* Fuel Cell Branch Stack Side */}
               <g transform="translate(685, 555)">
-                <rect width="130" height="26" rx="3" fill="#0a101d" stroke="#a855f7" strokeWidth="0.8" />
-                <text x="65" y="11" fill="#e9d5ff" fontSize="8" fontFamily="monospace" textAnchor="middle">
-                  FC STACK OUTPUT [DC]
+                <rect width="130" height="26" rx="3" fill="#0a101d" stroke={isFcEnabled ? '#a855f7' : '#475569'} strokeWidth="0.8" />
+                <text x="65" y="11" fill={isFcEnabled ? '#e9d5ff' : '#94a3b8'} fontSize="8" fontFamily="monospace" textAnchor="middle">
+                  {isFcEnabled ? 'FC STACK OUTPUT [DC]' : 'FC STACK [DISABLED]'}
                 </text>
-                <text x="65" y="21" fill="#c084fc" fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  28.0V DC | {i_fc_stack_a}A DC | {p_fc_stack_w}W DC
+                <text x="65" y="21" fill={isFcEnabled ? '#c084fc' : '#64748b'} fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  {isFcEnabled ? `28.0V DC | ${i_fc_stack_a}A DC | ${p_fc_stack_w}W DC` : '0.0V DC | 0.0A | 0W (P2G)'}
                 </text>
               </g>
 
               {/* Fuel Cell Branch Bus Infeed */}
               <g transform="translate(810, 420)">
-                <rect width="125" height="42" rx="4" fill="#0c1322" stroke="#a855f7" strokeWidth="1.2" />
-                <text x="62.5" y="11" fill="#f3e8ff" fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  BRANCH 5: FC INJECTION [DC]
+                <rect width="125" height="42" rx="4" fill="#0c1322" stroke={isFcEnabled ? '#a855f7' : '#475569'} strokeWidth="1.2" />
+                <text x="62.5" y="11" fill={isFcEnabled ? '#f3e8ff' : '#94a3b8'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  {isFcEnabled ? 'BRANCH 5: FC INJECTION [DC]' : 'BRANCH 5: FC DISABLED [DC]'}
                 </text>
-                <text x="62.5" y="22" fill="#e9d5ff" fontSize="9" fontFamily="monospace" textAnchor="middle">
+                <text x="62.5" y="22" fill={isFcEnabled ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
                   VOLTS: {v_bus.toFixed(2)} V DC
                 </text>
-                <text x="62.5" y="31" fill="#e9d5ff" fontSize="9" fontFamily="monospace" textAnchor="middle">
-                  CURRENT: {i_fc_a.toFixed(1)} A DC
+                <text x="62.5" y="31" fill={isFcEnabled ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
+                  CURRENT: {isFcEnabled ? `${i_fc_a.toFixed(1)} A DC` : '0.0 A DC (ISOLATED)'}
                 </text>
-                <text x="62.5" y="39" fill="#a855f7" fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                  POWER: {p_fc_w} W DC
+                <text x="62.5" y="39" fill={isFcEnabled ? '#a855f7' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  POWER: {isFcEnabled ? `${p_fc_w} W DC` : '0 W DC (P2G MODE)'}
                 </text>
               </g>
             </g>
@@ -1192,95 +1256,206 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
           </g>
 
           {/* NODE 7: PRESSURIZED HYDROGEN STORAGE TANK */}
-          <g id="node-h2-tank" transform="translate(390, 560)">
-            <rect width="120" height="150" rx="8" fill="#0c1322" stroke="#38bdf8" strokeWidth="1.8" />
-            <rect x="0" y="0" width="120" height="24" rx="8" fill="#0369a1" />
-            <text x="60" y="16" fill="#f0f9ff" fontSize="10" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+          <g id="node-h2-tank" transform="translate(360, 560)">
+            <rect width="115" height="150" rx="8" fill="#0c1322" stroke="#38bdf8" strokeWidth="1.8" />
+            <rect x="0" y="0" width="115" height="24" rx="8" fill="#0369a1" />
+            <text x="57.5" y="16" fill="#f0f9ff" fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
               H₂ STORAGE TANK
             </text>
-            <Gauge className="text-sky-300" x="10" y="32" width="16" height="16" />
-            <text x="32" y="44" fill="#bae6fd" fontSize="9.5" fontWeight="bold" fontFamily="monospace">
+            <Gauge className="text-sky-300" x="8" y="32" width="16" height="16" />
+            <text x="28" y="44" fill="#bae6fd" fontSize="9.5" fontWeight="bold" fontFamily="monospace">
               {activeStep.p_tank_bar.toFixed(1)} bar
             </text>
-            <text x="10" y="66" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+            <text x="8" y="66" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
               Mass: {activeStep.m_h2_tank_kg.toFixed(3)} kg
             </text>
-            <text x="10" y="82" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
-              Volume: {Math.round(params.tank_volume_m3 * 1000)} Liters
+            <text x="8" y="82" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+              Vol: {Math.round(params.tank_volume_m3 * 1000)} Liters
             </text>
-            <text x="10" y="98" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+            <text x="8" y="98" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
               P_max: {params.tank_p_max_bar} bar
             </text>
-            <text x="10" y="114" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+            <text x="8" y="114" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
               Real Gas Z: ~1.02
             </text>
-            <rect x="10" y="126" width="100" height="16" rx="3" fill="#082f49" />
-            <text x="60" y="137" fill="#7dd3fc" fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-              LHV: 33.3 kWh/kg
+            <rect x="8" y="126" width="99" height="16" rx="3" fill="#082f49" />
+            <text x="57.5" y="137" fill="#7dd3fc" fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              CYLINDER STORE
             </text>
           </g>
 
-          {/* NODE 8: PEM FUEL CELL & BOOST DC-DC CONVERTER */}
-          {/* Pressure Regulator */}
-          <g id="node-h2-regulator" transform="translate(630, 605)">
-            <circle cx="15" cy="15" r="14" fill="#131d31" stroke="#38bdf8" strokeWidth="1.2" />
-            <text x="15" y="18" fill="#38bdf8" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-              REG
-            </text>
-            <text x="15" y="38" fill="#94a3b8" fontSize="7.5" fontFamily="monospace" textAnchor="middle">
-              1.5 bar
-            </text>
-          </g>
-
-          {/* PEM Fuel Cell Stack */}
-          <g id="node-pem-fuel-cell" transform="translate(670, 590)">
-            <rect width="130" height="120" rx="6" fill="#0f172a" stroke="#a855f7" strokeWidth="1.8" />
-            <rect x="0" y="0" width="130" height="22" rx="6" fill="#3b0764" />
-            <text x="65" y="15" fill="#e9d5ff" fontSize="9.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-              PEM FUEL CELL
-            </text>
-            <Activity className="text-purple-400" x="10" y="30" width="16" height="16" />
-            <text x="30" y="42" fill="#f3e8ff" fontSize="9" fontWeight="bold" fontFamily="monospace">
-              Rating: {params.fc_rated_kw.toFixed(1)} kW
-            </text>
-            <text x="10" y="62" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
-              Opt Set: {params.fc_opt_setpoint_kw.toFixed(1)} kW
-            </text>
-            <text x="10" y="78" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
-              Eff: {(params.eta_fc_stack * 100).toFixed(0)}%
-            </text>
-            <text x="10" y="94" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
-              V_fc: 28.0 V DC
-            </text>
-            <rect x="8" y="102" width="114" height="12" rx="2" fill="#3b0764" />
+          {/* NODE 7b: ATMOSPHERIC TEDLAR GAS BAGS (EXCESS H2 STORAGE) */}
+          <g id="node-tedlar-bags" transform="translate(490, 560)">
+            <rect
+              width="125"
+              height="150"
+              rx="8"
+              fill="#081528"
+              stroke={isTedlarEnabled ? (tedlarIsReceiving ? '#38bdf8' : '#0284c7') : '#334155'}
+              strokeWidth="1.8"
+              strokeDasharray={isTedlarEnabled ? undefined : '4 4'}
+            />
+            <rect x="0" y="0" width="125" height="24" rx="8" fill={isTedlarEnabled ? '#075985' : '#1e293b'} />
             <text
-              x="65"
-              y="111"
-              fill={fcIsActive ? '#d8b4fe' : '#64748b'}
+              x="62.5"
+              y="16"
+              fill={isTedlarEnabled ? '#e0f2fe' : '#94a3b8'}
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              TEDLAR BAGS (1 ATM)
+            </text>
+            <text
+              x="62.5"
+              y="40"
+              fill={isTedlarEnabled ? '#38bdf8' : '#64748b'}
+              fontSize="11"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              {tedlarVolumeL} Liters
+            </text>
+            <text
+              x="62.5"
+              y="55"
+              fill={isTedlarEnabled ? '#7dd3fc' : '#64748b'}
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              {tedlarBagsCount} × {tedlarChunkSize}L Chunks
+            </text>
+            <text x="10" y="74" fill="#94a3b8" fontSize="8" fontFamily="monospace">
+              Pressure: 1.013 bar
+            </text>
+            <text x="10" y="89" fill="#94a3b8" fontSize="8" fontFamily="monospace">
+              Mass: {((activeStep.m_h2_tedlar_kg || 0) * 1000).toFixed(1)} g H₂
+            </text>
+            <text x="10" y="104" fill="#94a3b8" fontSize="8" fontFamily="monospace">
+              Material: PVF Tedlar
+            </text>
+            <text x="10" y="119" fill="#94a3b8" fontSize="8" fontFamily="monospace">
+              Atmospheric Buffer
+            </text>
+            <rect x="8" y="128" width="109" height="15" rx="3" fill={isTedlarEnabled ? '#0c4a6e' : '#1e293b'} />
+            <text
+              x="62.5"
+              y="139"
+              fill={isTedlarEnabled ? (tedlarIsReceiving ? '#67e8f9' : '#bae6fd') : '#64748b'}
               fontSize="7.5"
               fontWeight="bold"
               fontFamily="monospace"
               textAnchor="middle"
             >
-              {fcIsActive ? 'ACTIVE BACKUP' : 'LATCH OFF'}
+              {isTedlarEnabled ? (tedlarIsReceiving ? 'RECEIVING EXCESS' : 'STANDBY BUFFER') : 'OPTIONAL: DISABLED'}
+            </text>
+          </g>
+
+          {/* NODE 8: PEM FUEL CELL & BOOST DC-DC CONVERTER (OPTIONAL) */}
+          {/* Pressure Regulator */}
+          <g id="node-h2-regulator" transform="translate(635, 605)">
+            <circle
+              cx="15"
+              cy="15"
+              r="14"
+              fill="#131d31"
+              stroke={isFcEnabled ? '#38bdf8' : '#475569'}
+              strokeWidth="1.2"
+              strokeDasharray={isFcEnabled ? undefined : '2 2'}
+            />
+            <text
+              x="15"
+              y="18"
+              fill={isFcEnabled ? '#38bdf8' : '#64748b'}
+              fontSize="7.5"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              REG
+            </text>
+            <text x="15" y="38" fill="#94a3b8" fontSize="7.5" fontFamily="monospace" textAnchor="middle">
+              {isFcEnabled ? '1.5 bar' : 'CLOSED'}
+            </text>
+          </g>
+
+          {/* PEM Fuel Cell Stack */}
+          <g id="node-pem-fuel-cell" transform="translate(680, 590)">
+            <rect
+              width="130"
+              height="120"
+              rx="6"
+              fill="#0f172a"
+              stroke={isFcEnabled ? '#a855f7' : '#475569'}
+              strokeWidth={isFcEnabled ? '1.8' : '1.2'}
+              strokeDasharray={isFcEnabled ? undefined : '4 4'}
+            />
+            <rect x="0" y="0" width="130" height="22" rx="6" fill={isFcEnabled ? '#3b0764' : '#1e293b'} />
+            <text
+              x="65"
+              y="15"
+              fill={isFcEnabled ? '#e9d5ff' : '#94a3b8'}
+              fontSize="9.5"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              {isFcEnabled ? 'PEM FUEL CELL' : 'FUEL CELL (OPTIONAL)'}
+            </text>
+            <Activity className={isFcEnabled ? 'text-purple-400' : 'text-slate-500'} x="10" y="30" width="16" height="16" />
+            <text x="30" y="42" fill={isFcEnabled ? '#f3e8ff' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace">
+              {isFcEnabled ? `Rating: ${params.fc_rated_kw.toFixed(1)} kW` : 'NOT INSTALLED'}
+            </text>
+            <text x="10" y="62" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+              Opt Set: {isFcEnabled ? `${params.fc_opt_setpoint_kw.toFixed(1)} kW` : 'N/A (P2G)'}
+            </text>
+            <text x="10" y="78" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+              Eff: {(params.eta_fc_stack * 100).toFixed(0)}%
+            </text>
+            <text x="10" y="94" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
+              V_fc: {isFcEnabled ? '28.0 V DC' : '0.0 V'}
+            </text>
+            <rect x="8" y="102" width="114" height="12" rx="2" fill={isFcEnabled ? '#3b0764' : '#1e293b'} />
+            <text
+              x="65"
+              y="111"
+              fill={isFcEnabled ? (fcIsActive ? '#d8b4fe' : '#64748b') : '#94a3b8'}
+              fontSize="7.5"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              {isFcEnabled ? (fcIsActive ? 'ACTIVE BACKUP' : 'LATCH OFF') : 'P2G MODE (STANDALONE)'}
             </text>
           </g>
 
           {/* Step-Up Boost DC-DC Converter */}
           <g id="node-fc-boost-dcdc" transform="translate(700, 500)">
-            <rect width="100" height="60" rx="4" fill="#0f172a" stroke="#a855f7" strokeWidth="1.2" />
-            <rect x="0" y="0" width="100" height="18" rx="4" fill="#3b0764" />
-            <text x="50" y="13" fill="#e9d5ff" fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+            <rect
+              width="100"
+              height="60"
+              rx="4"
+              fill="#0f172a"
+              stroke={isFcEnabled ? '#a855f7' : '#475569'}
+              strokeWidth={isFcEnabled ? '1.2' : '1'}
+              strokeDasharray={isFcEnabled ? undefined : '3 3'}
+            />
+            <rect x="0" y="0" width="100" height="18" rx="4" fill={isFcEnabled ? '#3b0764' : '#1e293b'} />
+            <text x="50" y="13" fill={isFcEnabled ? '#e9d5ff' : '#94a3b8'} fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
               BOOST DC-DC
             </text>
             <text x="8" y="32" fill="#cbd5e1" fontSize="8" fontFamily="monospace">
-              28V DC → 48V DC
+              {isFcEnabled ? '28V DC → 48V DC' : 'ISOLATED'}
             </text>
             <text x="8" y="44" fill="#94a3b8" fontSize="8" fontFamily="monospace">
               Eff: {(params.eta_fc_dcdc * 100).toFixed(0)}%
             </text>
-            <text x="8" y="55" fill="#a855f7" fontSize="8" fontWeight="bold" fontFamily="monospace">
-              {fcIsActive ? 'BOOSTING' : 'STANDBY'}
+            <text x="8" y="55" fill={isFcEnabled ? '#a855f7' : '#64748b'} fontSize="8" fontWeight="bold" fontFamily="monospace">
+              {isFcEnabled ? (fcIsActive ? 'BOOSTING' : 'STANDBY') : 'BRANCH 5 OPEN'}
             </text>
           </g>
 
@@ -1341,9 +1516,25 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
           </div>
 
           <div className="flex items-center gap-1.5 bg-[#121c2e] px-2 py-0.5 rounded border border-slate-700">
-            <span className="text-slate-400 text-[10px]">H₂ Stored:</span>
+            <span className="text-slate-400 text-[10px]">H₂ Tank:</span>
             <strong className="text-cyan-400 text-[11px]">
               {activeStep.m_h2_tank_kg.toFixed(3)} kg ({activeStep.p_tank_bar.toFixed(1)} bar)
+            </strong>
+          </div>
+
+          {isTedlarEnabled && (
+            <div className="flex items-center gap-1.5 bg-[#121c2e] px-2 py-0.5 rounded border border-sky-800">
+              <span className="text-sky-400 text-[10px]">Tedlar:</span>
+              <strong className="text-sky-300 text-[11px]">
+                {tedlarVolumeL} L ({tedlarBagsCount} × {tedlarChunkSize}L)
+              </strong>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 bg-[#121c2e] px-2 py-0.5 rounded border border-slate-700">
+            <span className="text-slate-400 text-[10px]">Fuel Cell:</span>
+            <strong className={`text-[11px] ${isFcEnabled ? (fcIsActive ? 'text-purple-300' : 'text-slate-400') : 'text-amber-400'}`}>
+              {isFcEnabled ? (fcIsActive ? `${p_fc_w} W DC` : 'STANDBY') : 'P2G MODE'}
             </strong>
           </div>
         </div>

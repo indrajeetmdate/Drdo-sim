@@ -119,6 +119,9 @@ export const BottomInspectorTabs: React.FC<Props> = ({
       'm_h2_cons_kg',
       'm_h2_tank_kg',
       'p_tank_bar',
+      'm_h2_tedlar_kg',
+      'v_tedlar_liters',
+      'tedlar_bags_count',
       'p_curtailed_kw',
       'p_unserved_kw',
       'i_pv_a',
@@ -156,6 +159,9 @@ export const BottomInspectorTabs: React.FC<Props> = ({
       d.m_h2_cons_kg.toFixed(5),
       d.m_h2_tank_kg.toFixed(5),
       d.p_tank_bar.toFixed(2),
+      d.m_h2_tedlar_kg ? d.m_h2_tedlar_kg.toFixed(5) : '0.00000',
+      d.v_tedlar_liters ? d.v_tedlar_liters.toFixed(2) : '0.00',
+      d.tedlar_bags_count || 0,
       d.p_curtailed_kw.toFixed(4),
       d.p_unserved_kw.toFixed(4),
       d.i_pv_a.toFixed(2),
@@ -375,6 +381,7 @@ export const BottomInspectorTabs: React.FC<Props> = ({
                     <th className="p-1.5 border-r border-slate-800 text-cyan-300">m_H₂ [kg]</th>
                     <th className="p-1.5 border-r border-slate-800 text-purple-400">P_fc [kW]</th>
                     <th className="p-1.5 border-r border-slate-800 text-sky-400">P_tank [bar]</th>
+                    <th className="p-1.5 border-r border-slate-800 text-sky-300">Tedlar [L] (bags)</th>
                     <th className="p-1.5 border-r border-slate-800 text-slate-400">Curt [kW]</th>
                     <th className="p-1.5 border-r border-slate-800 text-rose-400">Unserved [kW]</th>
                     <th className="p-1.5">KCL Residual [A]</th>
@@ -429,6 +436,11 @@ export const BottomInspectorTabs: React.FC<Props> = ({
                       </td>
                       <td className="p-1.5 border-r border-slate-800/60 text-sky-400 text-right font-semibold">
                         {r.p_tank_bar.toFixed(1)}
+                      </td>
+                      <td className="p-1.5 border-r border-slate-800/60 text-sky-300 text-right">
+                        {r.v_tedlar_liters && r.v_tedlar_liters > 0
+                          ? `${r.v_tedlar_liters.toFixed(1)}L (${r.tedlar_bags_count})`
+                          : '-'}
                       </td>
                       <td className="p-1.5 border-r border-slate-800/60 text-slate-400 text-right">
                         {r.p_curtailed_kw > 0 ? r.p_curtailed_kw.toFixed(2) : '-'}
