@@ -1,0 +1,25 @@
+{
+  "name": "hybrid-dc-microgrid-p2h2p-workbench",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Deterministic engineering-grade Hybrid DC Microgrid & Power-to-Hydrogen-to-Power (P2H2P) Simulation Workbench",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
