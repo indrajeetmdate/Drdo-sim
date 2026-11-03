@@ -559,6 +559,24 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
     }
   };
 
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!e.touches || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const leftMargin = 55;
+    const rightMargin = 55;
+    const plotWidth = rect.width - leftMargin - rightMargin;
+
+    if (x >= leftMargin && x <= rect.width - rightMargin) {
+      const frac = (x - leftMargin) / plotWidth;
+      const targetIdx = Math.round(startIndex + frac * (endIndex - startIndex));
+      if (targetIdx >= 0 && targetIdx < data.length) {
+        setHoverIndex(targetIdx);
+      }
+    }
+  };
+
   const handleMouseLeave = () => {
     setHoverIndex(null);
   };
@@ -566,12 +584,13 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
   return (
     <div
       ref={containerRef}
-      className="flex-1 flex flex-col bg-[#080d17] overflow-hidden select-none border-b border-slate-800"
+      className="flex-1 flex flex-col bg-[#080d17] overflow-hidden border-b border-slate-800"
+      style={{ touchAction: 'pan-y' }}
     >
       {/* Plot Header Toolbar: Time Range Controls & Synchronized Hover Readout */}
-      <div className="bg-[#0b1220] border-b border-slate-800 px-4 py-1.5 flex flex-wrap items-center justify-between text-xs">
+      <div className="bg-[#0b1220] border-b border-slate-800 px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between text-xs gap-2">
         {/* Zoom Presets */}
-        <div className="flex items-center gap-1 font-mono">
+        <div className="flex items-center gap-1 font-mono flex-wrap">
           <span className="text-slate-500 text-[11px] mr-1 uppercase">Zoom:</span>
           <button
             onClick={() => handleZoomPreset(1)}
@@ -608,11 +627,11 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
 
         {/* Live Hover Scrubber Telemetry Header */}
         {activeStep && (
-          <div className="flex items-center gap-3 font-mono text-[11px]">
+          <div className="flex items-center gap-2 sm:gap-3 font-mono text-[11px] flex-wrap">
             <div className="flex items-center gap-1.5 bg-[#131d31] px-2 py-0.5 rounded border border-slate-700">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span className="text-cyan-300 font-bold">{activeStep.timestamp}</span>
-              <span className="text-slate-500">(Step {activeStep.step})</span>
+              <span className="text-slate-500 hidden sm:inline">(Step {activeStep.step})</span>
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -660,9 +679,12 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
 
       {/* 4 Synchronized Canvas Plot Tracks */}
       <div
-        className="flex-1 flex flex-col divide-y divide-slate-800/80 cursor-crosshair overflow-hidden"
+        className="flex-1 flex flex-col divide-y divide-slate-800/80 cursor-crosshair overflow-hidden min-h-[360px]"
+        style={{ touchAction: 'pan-y' }}
         onMouseMove={handleMouseMove}
+        onTouchMove={handleTouchMove}
         onMouseLeave={handleMouseLeave}
+        onTouchEnd={handleMouseLeave}
       >
         {/* PLOT 1: Power Dispatch Stack (kW) */}
         <div className="flex-1 flex flex-col relative min-h-[110px]">

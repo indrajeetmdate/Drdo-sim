@@ -25,6 +25,7 @@ interface Props {
   onResetDefaults: () => void;
   autoRecompute: boolean;
   onToggleAutoRecompute: (val: boolean) => void;
+  onCloseMobile?: () => void;
 }
 
 export const ParameterMatrixSidebar: React.FC<Props> = ({
@@ -38,6 +39,7 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
   onResetDefaults,
   autoRecompute,
   onToggleAutoRecompute,
+  onCloseMobile,
 }) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     solar: false,
@@ -59,7 +61,7 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
   };
 
   return (
-    <aside className="w-80 flex-shrink-0 bg-[#0e1626] border-r border-slate-800 flex flex-col h-full text-slate-200 select-none overflow-hidden">
+    <aside className="w-full lg:w-80 flex-shrink-0 bg-[#0e1626] border-r border-slate-800 flex flex-col h-full text-slate-200 overflow-hidden">
       {/* Sidebar Header & Scenario Selector */}
       <div className="p-3 bg-[#0a0f1b] border-b border-slate-800 space-y-2.5">
         <div className="flex items-center justify-between">
@@ -69,13 +71,24 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
               Parameter Matrix
             </span>
           </div>
-          <button
-            onClick={onResetDefaults}
-            title="Reset to engineering defaults"
-            className="text-slate-400 hover:text-slate-200 p-1 hover:bg-slate-800 rounded transition"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onResetDefaults}
+              title="Reset to engineering defaults"
+              className="text-slate-400 hover:text-slate-200 p-1 hover:bg-slate-800 rounded transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            {onCloseMobile && (
+              <button
+                onClick={onCloseMobile}
+                title="Close Sidebar"
+                className="lg:hidden text-slate-400 hover:text-slate-100 p-1 hover:bg-slate-800 rounded transition font-bold text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Preset Selector */}

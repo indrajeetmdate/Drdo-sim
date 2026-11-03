@@ -7,6 +7,7 @@ import {
 } from '../types/microgrid';
 import { generateSwitchgearAndBom } from '../simulation/switchgearSizer';
 import { parseCsvFile, CsvParseResult } from '../simulation/csvParser';
+import { InteractiveSystemFlowDiagram } from './InteractiveSystemFlowDiagram';
 import {
   AlertCircle,
   CheckCircle2,
@@ -29,6 +30,8 @@ interface Props {
   summary: SimulationSummary | null;
   onLoadCustomDataset: (steps: TimeSeriesInputStep[], name: string) => void;
   onOpenDiagramModal: () => void;
+  activeStep?: TimeSeriesOutputStep | null;
+  onSelectStepIndex?: (index: number) => void;
 }
 
 export const BottomInspectorTabs: React.FC<Props> = ({
@@ -37,8 +40,11 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   summary,
   onLoadCustomDataset,
   onOpenDiagramModal,
+  activeStep,
+  onSelectStepIndex,
 }) => {
-  const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('table');
+  const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('diagram');
+  const [diagramSubView, setDiagramSubView] = useState<'interactive' | 'schematic'>('interactive');
 
   // Tab A: Table search & pagination state
   const [tableSearch, setTableSearch] = useState('');
@@ -204,25 +210,37 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   };
 
   return (
-    <div className="h-64 flex flex-col bg-[#0a0f1b] border-t border-slate-800 text-slate-300 font-mono text-xs select-none">
+    <div className="min-h-[360px] lg:h-80 flex flex-col bg-[#0a0f1b] border-t border-slate-800 text-slate-300 font-mono text-xs">
       {/* Tab Navigation Header */}
-      <div className="flex items-center justify-between bg-[#0e1626] border-b border-slate-800 px-4 py-1">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between bg-[#0e1626] border-b border-slate-800 px-3 sm:px-4 py-1.5 overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-1.5 flex-nowrap">
+          <button
+            onClick={() => setActiveTab('diagram')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition flex-shrink-0 ${
+              activeTab === 'diagram'
+                ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>Visual Flow Diagram & SLD</span>
+          </button>
+
           <button
             onClick={() => setActiveTab('table')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition flex-shrink-0 ${
               activeTab === 'table'
                 ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
             }`}
           >
             <Table className="w-3.5 h-3.5" />
-            <span>Time-Step Data Table ({data.length})</span>
+            <span>Data Table ({data.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('csv')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition flex-shrink-0 ${
               activeTab === 'csv'
                 ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -234,7 +252,7 @@ export const BottomInspectorTabs: React.FC<Props> = ({
 
           <button
             onClick={() => setActiveTab('bom')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition flex-shrink-0 ${
               activeTab === 'bom'
                 ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -245,20 +263,8 @@ export const BottomInspectorTabs: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('diagram')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition ${
-              activeTab === 'diagram'
-                ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5 text-amber-400" />
-            <span>System Single-Line Diagram</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('benchmark')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition ${
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs transition flex-shrink-0 ${
               activeTab === 'benchmark'
                 ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -711,64 +717,111 @@ export const BottomInspectorTabs: React.FC<Props> = ({
           </div>
         )}
 
-        {/* TAB D: SYSTEM SINGLE-LINE DIAGRAM */}
+        {/* TAB D: SYSTEM SINGLE-LINE DIAGRAM & INTERACTIVE FLOW */}
         {activeTab === 'diagram' && (
-          <div className="flex flex-col lg:flex-row gap-4 h-full">
-            <div className="flex-1 bg-[#070b13] border border-slate-800 rounded p-2 flex items-center justify-center overflow-hidden">
-              <img
-                src="/diagrams/media_1793685530871_13054513.jpg"
-                alt="Hybrid DC Microgrid Single Line Diagram"
-                className="max-h-full max-w-full object-contain rounded"
-              />
-            </div>
-            <div className="w-full lg:w-80 flex flex-col justify-between bg-[#0e1626] border border-slate-800 rounded p-3 space-y-3">
-              <div>
-                <h4 className="font-bold text-cyan-300 text-xs uppercase mb-1">
-                  Architecture Branch Map
-                </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
-                  Common 48 V DC Bus topology with 5 primary branches governed by central DAQ supervisory logic.
-                </p>
-                <div className="space-y-1.5 text-[11px]">
-                  <div className="p-1.5 rounded bg-[#131d31] border border-amber-500/30">
-                    <strong className="text-amber-400">Branch 1: Solar PV & MPPT</strong>
-                    <div className="text-slate-400 text-[10px]">
-                      {params.pv_peak_kw} kWp array → 2P DC Isolator → DC MCB → MPPT
-                    </div>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#131d31] border border-rose-500/30">
-                    <strong className="text-rose-400">Branch 2: Programmable DC Load</strong>
-                    <div className="text-slate-400 text-[10px]">
-                      48V DC Bus → DC MCB → Electronic Load & Community Feed
-                    </div>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#131d31] border border-emerald-500/30">
-                    <strong className="text-emerald-400">Branch 3: 16S LiFePO4 BESS</strong>
-                    <div className="text-slate-400 text-[10px]">
-                      {params.bess_cap_kwh} kWh Battery + BMS ↔ BiDir DC-DC ↔ 48V Bus
-                    </div>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#131d31] border border-cyan-500/30">
-                    <strong className="text-cyan-400">Branch 4: PEM Electrolyzer (H₂)</strong>
-                    <div className="text-slate-400 text-[10px]">
-                      {params.elec_rated_kw} kW Stack ← CC/CV Step-Down DC-DC ← 48V Bus
-                    </div>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#131d31] border border-purple-500/30">
-                    <strong className="text-purple-400">Branch 5: PEM Fuel Cell (Re-Elec)</strong>
-                    <div className="text-slate-400 text-[10px]">
-                      {params.fc_rated_kw} kW Stack → Boost Step-Up DC-DC → 48V Bus
-                    </div>
-                  </div>
-                </div>
+          <div className="flex flex-col gap-2 h-full">
+            <div className="flex flex-wrap items-center justify-between px-2 py-1.5 bg-[#101726] border border-slate-800 rounded gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-200 text-xs">View Mode:</span>
+                <button
+                  onClick={() => setDiagramSubView('interactive')}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono transition ${
+                    diagramSubView === 'interactive'
+                      ? 'bg-cyan-600 text-white font-bold shadow'
+                      : 'bg-[#141e33] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ⚡ Dynamic Flow Schematic (V, A, W, H₂, Signals)
+                </button>
+                <button
+                  onClick={() => setDiagramSubView('schematic')}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono transition ${
+                    diagramSubView === 'schematic'
+                      ? 'bg-cyan-600 text-white font-bold shadow'
+                      : 'bg-[#141e33] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  📐 CAD Engineering Single-Line
+                </button>
               </div>
+
               <button
                 onClick={onOpenDiagramModal}
-                className="w-full py-1.5 bg-[#1b263b] hover:bg-[#233350] text-cyan-300 font-bold rounded border border-cyan-500/40 text-xs transition"
+                className="px-2.5 py-1 bg-[#172338] hover:bg-[#1f304e] text-cyan-300 font-bold rounded border border-cyan-500/40 text-[11px] transition"
               >
-                Expand Diagram Fullscreen
+                Expand Fullscreen
               </button>
             </div>
+
+            {diagramSubView === 'interactive' ? (
+              <div className="flex-1 w-full min-h-[480px]">
+                <InteractiveSystemFlowDiagram
+                  currentStep={activeStep || data[0] || null}
+                  allSteps={data}
+                  params={params}
+                  onSelectStepIndex={onSelectStepIndex}
+                  onToggleFullscreen={onOpenDiagramModal}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col lg:flex-row gap-4 h-full">
+                <div className="flex-1 bg-[#070b13] border border-slate-800 rounded p-2 flex items-center justify-center overflow-hidden min-h-[300px]">
+                  <img
+                    src="/diagrams/media_1793685530871_13054513.jpg"
+                    alt="Hybrid DC Microgrid Single Line Diagram"
+                    className="max-h-full max-w-full object-contain rounded"
+                  />
+                </div>
+                <div className="w-full lg:w-80 flex flex-col justify-between bg-[#0e1626] border border-slate-800 rounded p-3 space-y-3">
+                  <div>
+                    <h4 className="font-bold text-cyan-300 text-xs uppercase mb-1">
+                      Architecture Branch Map
+                    </h4>
+                    <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+                      Common 48 V DC Bus topology with 5 primary branches governed by central DAQ supervisory logic.
+                    </p>
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="p-1.5 rounded bg-[#131d31] border border-amber-500/30">
+                        <strong className="text-amber-400">Branch 1: Solar PV & MPPT</strong>
+                        <div className="text-slate-400 text-[10px]">
+                          {params.pv_peak_kw} kWp array → 2P DC Isolator → DC MCB → MPPT
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-[#131d31] border border-rose-500/30">
+                        <strong className="text-rose-400">Branch 2: Programmable DC Load</strong>
+                        <div className="text-slate-400 text-[10px]">
+                          48V DC Bus → DC MCB → Electronic Load & Community Feed
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-[#131d31] border border-emerald-500/30">
+                        <strong className="text-emerald-400">Branch 3: 16S LiFePO4 BESS</strong>
+                        <div className="text-slate-400 text-[10px]">
+                          {params.bess_cap_kwh} kWh Battery + BMS ↔ BiDir DC-DC ↔ 48V Bus
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-[#131d31] border border-cyan-500/30">
+                        <strong className="text-cyan-400">Branch 4: PEM Electrolyzer (H₂)</strong>
+                        <div className="text-slate-400 text-[10px]">
+                          {params.elec_rated_kw} kW Stack ← CC/CV Step-Down DC-DC ← 48V Bus
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-[#131d31] border border-purple-500/30">
+                        <strong className="text-purple-400">Branch 5: PEM Fuel Cell (Re-Elec)</strong>
+                        <div className="text-slate-400 text-[10px]">
+                          {params.fc_rated_kw} kW Stack → Boost Step-Up DC-DC → 48V Bus
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={onOpenDiagramModal}
+                    className="w-full py-1.5 bg-[#1b263b] hover:bg-[#233350] text-cyan-300 font-bold rounded border border-cyan-500/40 text-xs transition"
+                  >
+                    Expand Diagram Fullscreen
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

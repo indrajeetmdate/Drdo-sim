@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/tasks-icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#080d17" />
     <title>Hybrid DC Microgrid & P2H2P Simulation Workbench</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,13 +24,30 @@
       }
     </script>
     <style>
-      body {
+      html, body {
         font-family: 'Inter', sans-serif;
         color: #f1f5f9;
         background-color: #080d17;
         margin: 0;
         padding: 0;
-        overflow: hidden;
+        min-height: 100%;
+        width: 100%;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+
+      /* Natural smooth scrolling on mobile/tablet */
+      body {
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      /* Desktop high-density workstation locked view */
+      @media (min-width: 1024px) {
+        body {
+          overflow: hidden;
+          height: 100vh;
+        }
       }
       
       /* Disable spin buttons and appearance quirks on all numeric inputs */
@@ -59,10 +76,52 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #334155;
       }
+
+      /* Directional Vector Flow Animations */
+      @keyframes flowDashForward {
+        from {
+          stroke-dashoffset: 24;
+        }
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+      @keyframes flowDashReverse {
+        from {
+          stroke-dashoffset: 0;
+        }
+        to {
+          stroke-dashoffset: 24;
+        }
+      }
+      @keyframes dataPacketPulse {
+        0%, 100% {
+          opacity: 0.35;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      .flow-active-forward {
+        stroke-dasharray: 6 3;
+        animation: flowDashForward 0.85s linear infinite;
+      }
+      .flow-active-reverse {
+        stroke-dasharray: 6 3;
+        animation: flowDashReverse 0.85s linear infinite;
+      }
+      .flow-active-fluid {
+        stroke-dasharray: 8 4;
+        animation: flowDashForward 1.2s linear infinite;
+      }
+      .flow-active-data {
+        stroke-dasharray: 4 4;
+        animation: flowDashForward 0.65s linear infinite;
+      }
     </style>
   </head>
-  <body class="bg-[#080d17] text-slate-100 select-none">
-    <div id="root" class="h-screen w-screen overflow-hidden"></div>
+  <body class="bg-[#080d17] text-slate-100">
+    <div id="root" class="min-h-screen lg:h-screen w-full overflow-x-hidden lg:overflow-hidden"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

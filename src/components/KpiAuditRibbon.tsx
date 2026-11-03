@@ -187,8 +187,8 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
       </div>
 
       {/* State Machine Duty Cycle Bar */}
-      <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 gap-2">
-        <div className="flex items-center gap-2">
+      <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 gap-2 overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-slate-500 font-sans font-semibold text-[10px] uppercase tracking-wider">
             Dispatch Duty Cycles:
           </span>
@@ -196,29 +196,29 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block"></span>
             <span>State 1 (BESS Chg): {summary.time_in_state_1_hours.toFixed(1)} h ({(summary.time_in_state_1_hours / (summary.total_steps * summary.dt_hours) * 100).toFixed(0)}%)</span>
           </div>
-          <span className="text-slate-700">•</span>
+          <span className="text-slate-700 hidden sm:inline">•</span>
           <div className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400 inline-block"></span>
             <span>State 2 (H₂ Prod): {summary.time_in_state_2_hours.toFixed(1)} h ({(summary.time_in_state_2_hours / (summary.total_steps * summary.dt_hours) * 100).toFixed(0)}%)</span>
           </div>
-          <span className="text-slate-700">•</span>
+          <span className="text-slate-700 hidden sm:inline">•</span>
           <div className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block"></span>
             <span>State 3 (BESS Dis): {summary.time_in_state_3_hours.toFixed(1)} h ({(summary.time_in_state_3_hours / (summary.total_steps * summary.dt_hours) * 100).toFixed(0)}%)</span>
           </div>
-          <span className="text-slate-700">•</span>
+          <span className="text-slate-700 hidden sm:inline">•</span>
           <div className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-sm bg-purple-500 inline-block"></span>
             <span>State 4 (FC Extender): {summary.time_in_state_4_hours.toFixed(1)} h ({(summary.time_in_state_4_hours / (summary.total_steps * summary.dt_hours) * 100).toFixed(0)}%)</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 text-slate-500">
           <span>
-            Bus Voltage: <strong className="text-slate-300">{summary.v_bus_min_v.toFixed(1)} V</strong> to <strong className="text-slate-300">{summary.v_bus_max_v.toFixed(1)} V</strong> (Avg {summary.v_bus_avg_v.toFixed(1)} V)
+            Bus Voltage: <strong className="text-slate-300">{summary.v_bus_min_v.toFixed(1)} V</strong> to <strong className="text-slate-300">{summary.v_bus_max_v.toFixed(1)} V</strong>
           </span>
           <span>
-            Steps: <strong className="text-slate-300">{summary.total_steps}</strong> ({summary.duration_days.toFixed(1)} days @ dt={summary.dt_hours}h)
+            Steps: <strong className="text-slate-300">{summary.total_steps}</strong> ({summary.duration_days.toFixed(1)}d)
           </span>
         </div>
       </div>

@@ -15,20 +15,25 @@ import { runSimulation } from './src/simulation/simulationEngine';
 import { KpiAuditRibbon } from './src/components/KpiAuditRibbon';
 import { ParameterMatrixSidebar } from './src/components/ParameterMatrixSidebar';
 import { SynchronizedPlots } from './src/components/SynchronizedPlots';
+import { InteractiveSystemFlowDiagram } from './src/components/InteractiveSystemFlowDiagram';
 import { BottomInspectorTabs } from './src/components/BottomInspectorTabs';
 import { AutoSizingModal } from './src/components/AutoSizingModal';
 import { SystemDiagramModal } from './src/components/SystemDiagramModal';
 import {
   Activity,
+  Columns,
   Cpu,
   Download,
   Flame,
   Layers,
   LineChart,
+  Menu,
   Play,
   RotateCcw,
+  Sliders,
   Sparkles,
   Wand2,
+  X,
   Zap,
 } from 'lucide-react';
 
@@ -50,6 +55,15 @@ export default function App() {
   const [summary, setSummary] = useState<SimulationSummary | null>(null);
   const [solverExecutionTimeMs, setSolverExecutionTimeMs] = useState<number>(0);
   const [autoRecompute, setAutoRecompute] = useState<boolean>(true);
+
+  // Active Selected Step for Synchronized Scrubbing
+  const [activeStep, setActiveStep] = useState<TimeSeriesOutputStep | null>(null);
+
+  // Main Stage View Mode: 'flow' (Visual Line Diagram) | 'plots' (Canvas Plots) | 'split' (Both)
+  const [mainViewMode, setMainViewMode] = useState<'flow' | 'plots' | 'split'>('flow');
+
+  // Mobile drawer state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   // Modals State
   const [isAutoSizingOpen, setIsAutoSizingOpen] = useState<boolean>(false);
@@ -78,6 +92,15 @@ export default function App() {
         setOutputSteps(result.steps);
         setSummary(result.summary);
         setSolverExecutionTimeMs(Math.round((tEnd - tStart) * 100) / 100);
+
+        // Keep active step in sync
+        if (result.steps.length > 0) {
+          setActiveStep((prev) => {
+            if (!prev) return result.steps[0];
+            const found = result.steps.find((s) => s.step === prev.step);
+            return found || result.steps[0];
+          });
+        }
       } catch (err) {
         console.error('Simulation error:', err);
       }
@@ -147,54 +170,106 @@ export default function App() {
     }));
   };
 
+  const handleSelectStepIndex = (index: number) => {
+    if (outputSteps[index]) {
+      setActiveStep(outputSteps[index]);
+    }
+  };
+
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#080d17] text-slate-100 font-sans select-none overflow-hidden">
+    <div className="min-h-screen lg:h-screen w-full flex flex-col bg-[#080d17] text-slate-100 font-sans overflow-x-hidden lg:overflow-hidden">
       {/* Top Application Header Bar */}
-      <header className="h-10 bg-[#0a0f1b] border-b border-slate-800 px-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="min-h-11 bg-[#0a0f1b] border-b border-slate-800 px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between flex-shrink-0 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Mobile Sidebar Hamburger Toggle */}
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="lg:hidden p-1.5 bg-[#141e33] hover:bg-[#1d2d4c] rounded border border-slate-700 text-slate-300 transition flex items-center gap-1 text-xs"
+            title="Open Parameters"
+          >
+            <Sliders className="w-4 h-4 text-cyan-400" />
+            <span className="text-[11px] font-mono">Params</span>
+          </button>
+
           <div className="flex items-center gap-2">
             <div className="p-1 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
               <Zap className="w-4 h-4" />
             </div>
             <div>
               <h1 className="text-xs font-bold font-mono tracking-wider text-slate-100 uppercase flex items-center gap-1.5">
-                <span>Hybrid DC Microgrid & P2H2P Simulation Workbench</span>
+                <span className="truncate max-w-[200px] sm:max-w-none">
+                  Hybrid DC Microgrid & P2H2P Workbench
+                </span>
                 <span className="text-[10px] text-cyan-400 font-normal px-1.5 py-0.2 rounded bg-cyan-950/60 border border-cyan-800/40">
-                  v2.4
+                  v2.5
                 </span>
               </h1>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-slate-400 pl-2 border-l border-slate-800">
+          <div className="hidden xl:flex items-center gap-2 text-[11px] font-mono text-slate-400 pl-2 border-l border-slate-800">
             <span>48V DC Bus</span>
             <span className="text-slate-600">•</span>
             <span>16S LiFePO4</span>
             <span className="text-slate-600">•</span>
             <span>PEM Electrolyzer</span>
             <span className="text-slate-600">•</span>
-            <span>PEMFC Range-Extender</span>
+            <span>PEMFC</span>
           </div>
         </div>
 
-        {/* Right Status & Quick Action Badges */}
-        <div className="flex items-center gap-3 font-mono text-xs">
+        {/* Center / Right Stage View Switcher & Action Badges */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 font-mono text-xs">
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-[#101726] p-0.5 rounded border border-slate-700 text-[11px]">
+            <button
+              onClick={() => setMainViewMode('flow')}
+              className={`px-2.5 py-1 rounded transition flex items-center gap-1 font-bold ${
+                mainViewMode === 'flow'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Show Visual Line Diagram with Power (V, A, W DC) & Material Flow"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>Flow Diagram</span>
+            </button>
+
+            <button
+              onClick={() => setMainViewMode('plots')}
+              className={`px-2.5 py-1 rounded transition flex items-center gap-1 font-bold ${
+                mainViewMode === 'plots'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Show 4-Track Synchronized Canvas Engineering Plots"
+            >
+              <LineChart className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Plots</span>
+            </button>
+
+            <button
+              onClick={() => setMainViewMode('split')}
+              className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded transition font-bold ${
+                mainViewMode === 'split'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Show Both Flow Diagram & Synchronized Plots Stacked"
+            >
+              <Columns className="w-3.5 h-3.5 text-purple-400" />
+              <span>Split</span>
+            </button>
+          </div>
+
           {/* Active Preset Tag */}
-          <div className="hidden sm:flex items-center gap-1.5 bg-[#121929] px-2.5 py-0.5 rounded border border-slate-700/80 text-[11px]">
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#121929] px-2.5 py-1 rounded border border-slate-700/80 text-[11px]">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span className="text-slate-300 font-semibold truncate max-w-[200px]">
+            <span className="text-slate-300 font-semibold truncate max-w-[150px]">
               {customDatasetActive
                 ? `Custom: ${customDatasetName}`
                 : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name || 'Dataset'}
             </span>
-            <span className="text-slate-500">({inputSteps.length} pts)</span>
-          </div>
-
-          {/* Solver Performance Chip */}
-          <div className="flex items-center gap-1.5 text-slate-400 text-[11px] bg-[#101726] px-2 py-0.5 rounded border border-slate-800">
-            <Activity className="w-3 h-3 text-emerald-400" />
-            <span>Solver:</span>
-            <strong className="text-emerald-300">{solverExecutionTimeMs} ms</strong>
           </div>
 
           {/* Scale Tag */}
@@ -205,7 +280,7 @@ export default function App() {
                 : 'bg-amber-950/80 text-amber-300 border border-amber-500/50'
             }`}
           >
-            Scale {params.scale}
+            {params.scale}
           </span>
 
           {/* Auto-Size Action */}
@@ -222,34 +297,85 @@ export default function App() {
       {/* Top KPI & Energy Audit Ribbon */}
       <KpiAuditRibbon summary={summary} />
 
-      {/* Main Center Area: Left Sidebar + Plots + Bottom Inspector */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar: Parameter Control Matrix */}
-        <ParameterMatrixSidebar
-          params={params}
-          onChangeParams={setParams}
-          activePresetId={activePresetId}
-          onSelectPreset={handleSelectPreset}
-          presets={PRESET_SCENARIOS}
-          onOpenAutoSizer={() => setIsAutoSizingOpen(true)}
-          onOpenDiagram={() =>
-            setDiagramModal({
-              isOpen: true,
-              imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-              title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
-              description:
-                'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
-            })
-          }
-          onResetDefaults={handleResetDefaults}
-          autoRecompute={autoRecompute}
-          onToggleAutoRecompute={setAutoRecompute}
-        />
+      {/* Main Center Area: Left Sidebar (Desktop) + Main Stage + Bottom Inspector */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+        {/* Left Sidebar: Parameter Control Matrix (Desktop Docked) */}
+        <div className="hidden lg:block h-full">
+          <ParameterMatrixSidebar
+            params={params}
+            onChangeParams={setParams}
+            activePresetId={activePresetId}
+            onSelectPreset={handleSelectPreset}
+            presets={PRESET_SCENARIOS}
+            onOpenAutoSizer={() => setIsAutoSizingOpen(true)}
+            onOpenDiagram={() =>
+              setDiagramModal({
+                isOpen: true,
+                imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
+                title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
+                description:
+                  'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
+              })
+            }
+            onResetDefaults={handleResetDefaults}
+            autoRecompute={autoRecompute}
+            onToggleAutoRecompute={setAutoRecompute}
+          />
+        </div>
 
-        {/* Center Main Stage: Synchronized 4-Track Plots & Bottom Inspector */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Synchronized 4-Track Engineering Plots */}
-          <SynchronizedPlots data={outputSteps} params={params} />
+        {/* Center Main Stage */}
+        <main className="flex-1 flex flex-col overflow-y-auto lg:overflow-hidden min-w-0">
+          {/* Main Visual Display: Based on viewMode */}
+          <div className="flex-1 flex flex-col overflow-y-auto lg:overflow-hidden min-h-[380px]">
+            {mainViewMode === 'flow' ? (
+              // 1. VISUAL LINE DIAGRAM: Dynamic Directional Flow Schematic
+              <div className="flex-1 w-full h-full min-h-[460px] p-1 bg-[#060a12] flex flex-col overflow-hidden">
+                <InteractiveSystemFlowDiagram
+                  currentStep={activeStep}
+                  allSteps={outputSteps}
+                  params={params}
+                  onSelectStepIndex={handleSelectStepIndex}
+                  onToggleFullscreen={() =>
+                    setDiagramModal({
+                      isOpen: true,
+                      imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
+                      title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
+                      description:
+                        'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
+                    })
+                  }
+                />
+              </div>
+            ) : mainViewMode === 'plots' ? (
+              // 2. SYNCHRONIZED 4-TRACK PLOTS
+              <div className="flex-1 w-full h-full min-h-[420px] flex flex-col overflow-hidden">
+                <SynchronizedPlots
+                  data={outputSteps}
+                  params={params}
+                  onHoverStep={setActiveStep}
+                />
+              </div>
+            ) : (
+              // 3. SPLIT VIEW: Both Flow Diagram & Synchronized Plots
+              <div className="flex-1 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-800 overflow-y-auto lg:overflow-hidden">
+                <div className="flex-1 min-h-[380px] h-full p-1 bg-[#060a12]">
+                  <InteractiveSystemFlowDiagram
+                    currentStep={activeStep}
+                    allSteps={outputSteps}
+                    params={params}
+                    onSelectStepIndex={handleSelectStepIndex}
+                  />
+                </div>
+                <div className="flex-1 min-h-[380px] h-full flex flex-col">
+                  <SynchronizedPlots
+                    data={outputSteps}
+                    params={params}
+                    onHoverStep={setActiveStep}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Bottom Tabbed Inspector (Data Table, Custom CSV, BoM, Architecture, Benchmark) */}
           <BottomInspectorTabs
@@ -257,6 +383,8 @@ export default function App() {
             params={params}
             summary={summary}
             onLoadCustomDataset={handleLoadCustomDataset}
+            activeStep={activeStep}
+            onSelectStepIndex={handleSelectStepIndex}
             onOpenDiagramModal={() =>
               setDiagramModal({
                 isOpen: true,
@@ -269,6 +397,46 @@ export default function App() {
           />
         </main>
       </div>
+
+      {/* Mobile Drawer for Parameter Matrix Sidebar */}
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+          <div className="relative w-80 max-w-[85vw] h-full bg-[#0e1626] z-10 shadow-2xl flex flex-col">
+            <ParameterMatrixSidebar
+              params={params}
+              onChangeParams={setParams}
+              activePresetId={activePresetId}
+              onSelectPreset={(p) => {
+                handleSelectPreset(p);
+                setIsMobileSidebarOpen(false);
+              }}
+              presets={PRESET_SCENARIOS}
+              onOpenAutoSizer={() => {
+                setIsAutoSizingOpen(true);
+                setIsMobileSidebarOpen(false);
+              }}
+              onOpenDiagram={() => {
+                setDiagramModal({
+                  isOpen: true,
+                  imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
+                  title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
+                  description:
+                    'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
+                });
+                setIsMobileSidebarOpen(false);
+              }}
+              onResetDefaults={handleResetDefaults}
+              autoRecompute={autoRecompute}
+              onToggleAutoRecompute={setAutoRecompute}
+              onCloseMobile={() => setIsMobileSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <AutoSizingModal
@@ -285,6 +453,10 @@ export default function App() {
         imageSrc={diagramModal.imageSrc}
         title={diagramModal.title}
         description={diagramModal.description}
+        currentStep={activeStep}
+        allSteps={outputSteps}
+        params={params}
+        onSelectStepIndex={handleSelectStepIndex}
       />
     </div>
   );
