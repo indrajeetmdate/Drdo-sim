@@ -39,7 +39,12 @@ export interface SystemParameters {
   tank_m_h2_init_kg: number;  // Initial stored H2 mass (e.g. 0.5 kg)
   tank_m_h2_min_kg: number;   // Minimum residual H2 mass (e.g. 0.05 kg)
 
-  // 5. Hydrogen Re-Electrification Branch (PEM Fuel Cell)
+  // 4b. Atmospheric Tedlar Bags Storage Option (Excess H2)
+  tedlar_bags_enabled: boolean; // Store excess H2 at atmospheric pressure (~1.013 bar) without compression
+  tedlar_bag_chunk_l: number;  // Modular chunk size in Liters (default 10 L chunks)
+
+  // 5. Hydrogen Re-Electrification Branch (PEM Fuel Cell) - OPTIONAL
+  fc_enabled: boolean;        // Whether PEM Fuel Cell subsystem is installed and enabled (optional)
   fc_rated_kw: number;        // Fuel cell rated continuous power (e.g. 3.0 kW in 1:1, 0.3 kW in 1:10)
   fc_opt_setpoint_kw: number; // Preferred optimal operating setpoint (e.g. 2.0 kW in 1:1, 0.2 kW in 1:10)
   lhv_h2_kwh_per_kg: number;  // Lower Heating Value of H2 (33.33 kWh/kg)
@@ -97,8 +102,14 @@ export interface TimeSeriesOutputStep extends TimeSeriesInputStep {
   m_h2_cons_kg: number;   // H2 mass consumed in this dt
 
   // Hydrogen Storage Tank
-  m_h2_tank_kg: number;   // Cumulative stored H2 mass
+  m_h2_tank_kg: number;   // Cumulative stored H2 mass in pressurized cylinder
   p_tank_bar: number;     // Internal pressure [bar]
+
+  // Atmospheric Tedlar Bags Option (Excess H2 Storage)
+  m_h2_tedlar_kg: number;      // Stored H2 mass in Tedlar bags [kg]
+  v_tedlar_liters: number;     // Equivalent volume in Liters at 1 atm (1.013 bar)
+  tedlar_bags_count: number;   // Number of 10L Tedlar bags needed
+  cum_h2_tedlar_kg: number;    // Cumulative excess H2 directed to Tedlar bags
 
   // Curtailment & Deficit
   p_curtailed_kw: number; // Curtailed solar power
@@ -158,6 +169,17 @@ export interface SimulationSummary {
   peak_tank_pressure_bar: number;
   min_tank_pressure_bar: number;
   final_tank_pressure_bar: number;
+
+  // Atmospheric Tedlar Bags Audit
+  tedlar_bags_enabled: boolean;
+  total_h2_tedlar_kg: number;
+  total_tedlar_volume_liters: number;
+  total_tedlar_bags_10l_count: number;
+  tedlar_energy_stored_kwh: number;
+
+  // Fuel Cell System Status
+  fc_enabled: boolean;
+
   total_di_water_consumed_l: number;
   total_o2_produced_nm3: number;
   elec_total_input_kwh: number;

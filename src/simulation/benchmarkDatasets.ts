@@ -42,7 +42,12 @@ export const DEFAULT_PARAMETERS_1_TO_1: SystemParameters = {
   tank_m_h2_init_kg: 0.40,   // Initial 0.40 kg H2 in tank (~9.8 bar)
   tank_m_h2_min_kg: 0.05,    // 0.05 kg minimum residual cushion
 
-  // PEM Fuel Cell Branch
+  // Atmospheric Tedlar Bags Option (Excess H2)
+  tedlar_bags_enabled: true, // Enable atmospheric Tedlar gas bags for excess H2 collection
+  tedlar_bag_chunk_l: 10,    // 10-Liter modular chunk units
+
+  // PEM Fuel Cell Branch (Optional)
+  fc_enabled: true,          // Optional fuel cell range-extender (can be toggled false)
   fc_rated_kw: 3.0,          // 3.0 kW continuous rating
   fc_opt_setpoint_kw: 2.0,   // 2.0 kW optimal setpoint
   lhv_h2_kwh_per_kg: 33.33,  // 33.33 kWh / kg H2 (LHV)
@@ -88,6 +93,10 @@ export const DEFAULT_PARAMETERS_1_TO_10: SystemParameters = {
   tank_m_h2_init_kg: 0.04,
   tank_m_h2_min_kg: 0.005,
 
+  tedlar_bags_enabled: true,
+  tedlar_bag_chunk_l: 10,
+
+  fc_enabled: true,
   fc_rated_kw: 0.3,          // 300 W
   fc_opt_setpoint_kw: 0.2,   // 200 W
   lhv_h2_kwh_per_kg: 33.33,

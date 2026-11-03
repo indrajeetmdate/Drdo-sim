@@ -130,15 +130,19 @@ export function generateSwitchgearAndBom(
       fuseType: '2P DIN-Rail Fast-Acting DC MCB (Curve B)',
       costBase: isScale10 ? 40 : 110,
     },
-    {
-      branchName: 'Branch 5: PEM Fuel Cell Branch',
-      role: 'Step-Up Boost DC-DC Converter to 48V Bus',
-      simPeakA: summary.i_fc_peak_a,
-      lengthM: 3.5,
-      vNom: 48.0,
-      fuseType: '2P Polarized DC MCB + Reverse Polarity Diode Protection',
-      costBase: isScale10 ? 35 : 90,
-    },
+    ...(params.fc_enabled !== false
+      ? [
+          {
+            branchName: 'Branch 5: PEM Fuel Cell Branch',
+            role: 'Step-Up Boost DC-DC Converter to 48V Bus',
+            simPeakA: summary.i_fc_peak_a,
+            lengthM: 3.5,
+            vNom: 48.0,
+            fuseType: '2P Polarized DC MCB + Reverse Polarity Diode Protection',
+            costBase: isScale10 ? 35 : 90,
+          },
+        ]
+      : []),
   ];
 
   const switchgear: SwitchgearItem[] = branches.map((b) => {
@@ -245,24 +249,41 @@ export function generateSwitchgearAndBom(
       unitCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5)),
       totalCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5)),
     },
-    {
-      item: 'PEM Fuel Cell Stack',
-      subsystem: 'Re-Electrification',
-      specs: `${params.fc_rated_kw.toFixed(1)} kW Air-Cooled/Liquid-Cooled PEMFC Stack (52% electrochemical efficiency)`,
-      qty: 1,
-      unit: 'stack',
-      unitCostUsd: Math.round(params.fc_rated_kw * (isScale10 ? 1600 : 1200)),
-      totalCostUsd: Math.round(params.fc_rated_kw * (isScale10 ? 1600 : 1200)),
-    },
-    {
-      item: 'Step-Up Boost DC-DC Converter',
-      subsystem: 'Re-Electrification',
-      specs: `${params.fc_rated_kw.toFixed(1)} kW Synchronous Boost to 48V Bus with Overvoltage Clamping`,
-      qty: 1,
-      unit: 'unit',
-      unitCostUsd: isScale10 ? 190 : 680,
-      totalCostUsd: isScale10 ? 190 : 680,
-    },
+    ...(params.tedlar_bags_enabled !== false
+      ? [
+          {
+            item: 'Atmospheric Tedlar Gas Bags',
+            subsystem: 'Hydrogen Storage',
+            specs: `Polyvinyl Fluoride (PVF) Tedlar gas bags for uncompressed atmospheric excess H₂ storage at 1.013 bar (${summary.total_tedlar_volume_liters.toFixed(1)} L required, ${params.tedlar_bag_chunk_l || 10}L chunks)`,
+            qty: Math.max(1, summary.total_tedlar_bags_10l_count),
+            unit: `${params.tedlar_bag_chunk_l || 10}L bags`,
+            unitCostUsd: 28,
+            totalCostUsd: Math.max(1, summary.total_tedlar_bags_10l_count) * 28,
+          },
+        ]
+      : []),
+    ...(params.fc_enabled !== false
+      ? [
+          {
+            item: 'PEM Fuel Cell Stack',
+            subsystem: 'Re-Electrification',
+            specs: `${params.fc_rated_kw.toFixed(1)} kW Air-Cooled/Liquid-Cooled PEMFC Stack (52% electrochemical efficiency)`,
+            qty: 1,
+            unit: 'stack',
+            unitCostUsd: Math.round(params.fc_rated_kw * (isScale10 ? 1600 : 1200)),
+            totalCostUsd: Math.round(params.fc_rated_kw * (isScale10 ? 1600 : 1200)),
+          },
+          {
+            item: 'Step-Up Boost DC-DC Converter',
+            subsystem: 'Re-Electrification',
+            specs: `${params.fc_rated_kw.toFixed(1)} kW Synchronous Boost to 48V Bus with Overvoltage Clamping`,
+            qty: 1,
+            unit: 'unit',
+            unitCostUsd: isScale10 ? 190 : 680,
+            totalCostUsd: isScale10 ? 190 : 680,
+          },
+        ]
+      : []),
     {
       item: 'Central DAQ & Supervisory Controller',
       subsystem: 'Monitoring & Control',

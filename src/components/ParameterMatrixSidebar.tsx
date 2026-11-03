@@ -60,6 +60,13 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
     });
   };
 
+  const updateBoolean = (key: keyof SystemParameters, val: boolean) => {
+    onChangeParams({
+      ...params,
+      [key]: val,
+    });
+  };
+
   return (
     <aside className="w-full lg:w-80 flex-shrink-0 bg-[#0e1626] border-r border-slate-800 flex flex-col h-full text-slate-200 overflow-hidden">
       {/* Sidebar Header & Scenario Selector */}
@@ -461,6 +468,54 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                   className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-cyan-400"
                 />
               </div>
+
+              {/* Atmospheric Tedlar Gas Storage Bags Option */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-sky-300 font-medium flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={params.tedlar_bags_enabled !== false}
+                      onChange={(e) =>
+                        onChangeParams({
+                          ...params,
+                          tedlar_bags_enabled: e.target.checked,
+                        })
+                      }
+                      className="accent-sky-400 rounded cursor-pointer"
+                    />
+                    <span>Tedlar Bags (Atmospheric)</span>
+                  </label>
+                  <span
+                    className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded ${
+                      params.tedlar_bags_enabled !== false
+                        ? 'bg-sky-950/80 text-sky-300 border border-sky-800'
+                        : 'bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {params.tedlar_bags_enabled !== false ? 'ACTIVE' : 'OFF'}
+                  </span>
+                </div>
+                {params.tedlar_bags_enabled !== false && (
+                  <div className="flex items-center justify-between pl-4">
+                    <span className="text-[10px] text-slate-400">Chunk Size [Liters]:</span>
+                    <input
+                      type="number"
+                      step="5"
+                      min="5"
+                      max="100"
+                      value={params.tedlar_bag_chunk_l || 10}
+                      onChange={(e) =>
+                        updateNumeric('tedlar_bag_chunk_l', parseFloat(e.target.value) || 10)
+                      }
+                      className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                )}
+                <p className="text-[9.5px] text-slate-400/80 italic pl-1 leading-tight">
+                  Stores excess H₂ at 1.013 bar when pressurized cylinder is full. Volume displayed in Liters & modular {params.tedlar_bag_chunk_l || 10}L chunks.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -483,57 +538,97 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
           </button>
           {!collapsedSections.fuelcell && (
             <div className="p-2.5 space-y-2 text-slate-300">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">P_fc_rated [kW]:</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={params.fc_rated_kw}
-                  onChange={(e) => updateNumeric('fc_rated_kw', parseFloat(e.target.value) || 0)}
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-purple-300 focus:outline-none focus:border-purple-400"
-                />
+              {/* Optional Fuel Cell Toggle */}
+              <div className="pb-2 border-b border-slate-800/80 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-purple-300 font-medium flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={params.fc_enabled !== false}
+                      onChange={(e) =>
+                        onChangeParams({
+                          ...params,
+                          fc_enabled: e.target.checked,
+                        })
+                      }
+                      className="accent-purple-400 rounded cursor-pointer"
+                    />
+                    <span>Fuel Cell System (Optional)</span>
+                  </label>
+                  <span
+                    className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                      params.fc_enabled !== false
+                        ? 'bg-purple-950/80 text-purple-300 border border-purple-800'
+                        : 'bg-amber-950/80 text-amber-300 border border-amber-800'
+                    }`}
+                  >
+                    {params.fc_enabled !== false ? 'ENABLED' : 'P2G MODE'}
+                  </span>
+                </div>
+                <p className="text-[9.5px] text-slate-400/80 italic pl-1 leading-tight">
+                  {params.fc_enabled !== false
+                    ? 'Re-electrifies stored H₂ when BESS reaches trigger threshold.'
+                    : 'Fuel Cell omitted. Standalone Power-to-Gas (P2G) mode. Evening deficit covered by BESS only.'}
+                </p>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">P_fc_opt [kW]:</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={params.fc_opt_setpoint_kw}
-                  onChange={(e) =>
-                    updateNumeric('fc_opt_setpoint_kw', parseFloat(e.target.value) || 0)
-                  }
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-purple-300 focus:outline-none focus:border-purple-400"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">η_fc_stack [%]:</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="30"
-                  max="70"
-                  value={Math.round(params.eta_fc_stack * 100)}
-                  onChange={(e) =>
-                    updateNumeric('eta_fc_stack', (parseFloat(e.target.value) || 52) / 100.0)
-                  }
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-purple-400"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">η_fc_boost [%]:</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="80"
-                  max="99"
-                  value={Math.round(params.eta_fc_dcdc * 100)}
-                  onChange={(e) =>
-                    updateNumeric('eta_fc_dcdc', (parseFloat(e.target.value) || 95) / 100.0)
-                  }
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-purple-400"
-                />
+
+              <div className={`space-y-2 ${params.fc_enabled === false ? 'opacity-40 pointer-events-none' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">P_fc_rated [kW]:</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    disabled={params.fc_enabled === false}
+                    value={params.fc_rated_kw}
+                    onChange={(e) => updateNumeric('fc_rated_kw', parseFloat(e.target.value) || 0)}
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-purple-300 focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">P_fc_opt [kW]:</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    disabled={params.fc_enabled === false}
+                    value={params.fc_opt_setpoint_kw}
+                    onChange={(e) =>
+                      updateNumeric('fc_opt_setpoint_kw', parseFloat(e.target.value) || 0)
+                    }
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-purple-300 focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">η_fc_stack [%]:</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="30"
+                    max="70"
+                    disabled={params.fc_enabled === false}
+                    value={Math.round(params.eta_fc_stack * 100)}
+                    onChange={(e) =>
+                      updateNumeric('eta_fc_stack', (parseFloat(e.target.value) || 52) / 100.0)
+                    }
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">η_fc_boost [%]:</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="80"
+                    max="99"
+                    disabled={params.fc_enabled === false}
+                    value={Math.round(params.eta_fc_dcdc * 100)}
+                    onChange={(e) =>
+                      updateNumeric('eta_fc_dcdc', (parseFloat(e.target.value) || 95) / 100.0)
+                    }
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-purple-400"
+                  />
+                </div>
               </div>
             </div>
           )}
