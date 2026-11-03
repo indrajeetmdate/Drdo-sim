@@ -243,25 +243,12 @@ export function generateSwitchgearAndBom(
     {
       item: 'Hydrogen Pressure Vessel & Manifold',
       subsystem: 'Hydrogen Storage',
-      specs: `${Math.round(params.tank_volume_m3 * 1000)} Liters Storage Cylinder rated for ${params.tank_p_max_bar} bar with overpressure relief valve`,
+      specs: `${Math.round(params.tank_volume_m3 * 1000)} Liters Pressure Vessel rated for ${params.tank_p_max_bar} bar (${params.tank_p_max_bar <= 1 ? 'Atmospheric Gas Holder' : params.tank_p_max_bar <= 35 ? 'Low-P Steel Cylinder' : 'Type IV Composite Vessel'}) with PRV & dual-stage regulator`,
       qty: 1,
       unit: 'vessel',
-      unitCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5)),
-      totalCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5)),
+      unitCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5) * (params.tank_p_max_bar > 100 ? 1.4 : 1.0)),
+      totalCostUsd: Math.round(params.tank_volume_m3 * 1000 * (isScale10 ? 18 : 6.5) * (params.tank_p_max_bar > 100 ? 1.4 : 1.0)),
     },
-    ...(params.tedlar_bags_enabled !== false
-      ? [
-          {
-            item: 'Atmospheric Tedlar Gas Bags',
-            subsystem: 'Hydrogen Storage',
-            specs: `Polyvinyl Fluoride (PVF) Tedlar gas bags for uncompressed atmospheric excess H₂ storage at 1.013 bar (${summary.total_tedlar_volume_liters.toFixed(1)} L required, ${params.tedlar_bag_chunk_l || 10}L chunks)`,
-            qty: Math.max(1, summary.total_tedlar_bags_10l_count),
-            unit: `${params.tedlar_bag_chunk_l || 10}L bags`,
-            unitCostUsd: 28,
-            totalCostUsd: Math.max(1, summary.total_tedlar_bags_10l_count) * 28,
-          },
-        ]
-      : []),
     ...(params.fc_enabled !== false
       ? [
           {

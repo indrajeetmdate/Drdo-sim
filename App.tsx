@@ -170,6 +170,15 @@ export default function App() {
     }));
   };
 
+  const handleScaleLoad = (multiplier: number) => {
+    setInputSteps((prev) =>
+      prev.map((s) => ({
+        ...s,
+        p_load_kw: Math.round(s.p_load_kw * multiplier * 1000) / 1000,
+      }))
+    );
+  };
+
   const handleSelectStepIndex = (index: number) => {
     if (outputSteps[index]) {
       setActiveStep(outputSteps[index]);
@@ -335,6 +344,8 @@ export default function App() {
                   allSteps={outputSteps}
                   params={params}
                   onSelectStepIndex={handleSelectStepIndex}
+                  onChangeParams={setParams}
+                  onScaleLoad={handleScaleLoad}
                   onToggleFullscreen={() =>
                     setDiagramModal({
                       isOpen: true,
@@ -364,6 +375,8 @@ export default function App() {
                     allSteps={outputSteps}
                     params={params}
                     onSelectStepIndex={handleSelectStepIndex}
+                    onChangeParams={setParams}
+                    onScaleLoad={handleScaleLoad}
                   />
                 </div>
                 <div className="flex-1 min-h-[380px] h-full flex flex-col">

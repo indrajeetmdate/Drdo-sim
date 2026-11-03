@@ -35,13 +35,9 @@ export interface SystemParameters {
 
   // 4. Hydrogen Storage & DI Water Tank
   tank_volume_m3: number;     // Physical geometric volume of H2 cylinder (e.g. 0.50 m³ = 500 L)
-  tank_p_max_bar: number;     // Maximum working pressure rating (default 30.0 bar for low-P metal hydrides or 200/350 bar)
+  tank_p_max_bar: number;     // Maximum working pressure rating (e.g. 1, 10, 30, 200, 350, 700 bar)
   tank_m_h2_init_kg: number;  // Initial stored H2 mass (e.g. 0.5 kg)
   tank_m_h2_min_kg: number;   // Minimum residual H2 mass (e.g. 0.05 kg)
-
-  // 4b. Atmospheric Tedlar Bags Storage Option (Excess H2)
-  tedlar_bags_enabled: boolean; // Store excess H2 at atmospheric pressure (~1.013 bar) without compression
-  tedlar_bag_chunk_l: number;  // Modular chunk size in Liters (default 10 L chunks)
 
   // 5. Hydrogen Re-Electrification Branch (PEM Fuel Cell) - OPTIONAL
   fc_enabled: boolean;        // Whether PEM Fuel Cell subsystem is installed and enabled (optional)
@@ -105,12 +101,6 @@ export interface TimeSeriesOutputStep extends TimeSeriesInputStep {
   m_h2_tank_kg: number;   // Cumulative stored H2 mass in pressurized cylinder
   p_tank_bar: number;     // Internal pressure [bar]
 
-  // Atmospheric Tedlar Bags Option (Excess H2 Storage)
-  m_h2_tedlar_kg: number;      // Stored H2 mass in Tedlar bags [kg]
-  v_tedlar_liters: number;     // Equivalent volume in Liters at 1 atm (1.013 bar)
-  tedlar_bags_count: number;   // Number of 10L Tedlar bags needed
-  cum_h2_tedlar_kg: number;    // Cumulative excess H2 directed to Tedlar bags
-
   // Curtailment & Deficit
   p_curtailed_kw: number; // Curtailed solar power
   p_unserved_kw: number;  // Loss of power supply / unserved load
@@ -170,12 +160,10 @@ export interface SimulationSummary {
   min_tank_pressure_bar: number;
   final_tank_pressure_bar: number;
 
-  // Atmospheric Tedlar Bags Audit
-  tedlar_bags_enabled: boolean;
-  total_h2_tedlar_kg: number;
-  total_tedlar_volume_liters: number;
-  total_tedlar_bags_10l_count: number;
-  tedlar_energy_stored_kwh: number;
+  // Pressure-Adjustable Hydrogen Storage Vessel Audit
+  tank_volume_liters: number;
+  tank_storage_capacity_kg: number;
+  tank_pressure_class_bar: number;
 
   // Fuel Cell System Status
   fc_enabled: boolean;
@@ -242,6 +230,7 @@ export interface SizingRecommendation {
   elec_rated_kw: number;
   fc_rated_kw: number;
   tank_volume_l: number;
+  tank_volume_m3: number;
   tank_pressure_bar: number;
   di_water_tank_l: number;
   explanation: {

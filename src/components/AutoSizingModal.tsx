@@ -178,22 +178,35 @@ export const AutoSizingModal: React.FC<Props> = ({
                   }}
                   className="w-full accent-cyan-500 cursor-pointer"
                 />
-                <div className="flex items-center justify-between text-slate-400 pt-1">
-                  <span>Tank Class:</span>
-                  <select
-                    value={targets.tank_pressure_class_bar}
-                    onChange={(e) =>
-                      setTargets({
-                        ...targets,
-                        tank_pressure_class_bar: parseInt(e.target.value, 10),
-                      })
-                    }
-                    className="bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-sky-300"
-                  >
-                    <option value={30}>30 bar (Low-P)</option>
-                    <option value={200}>200 bar (Cylinder)</option>
-                    <option value={350}>350 bar (Type IV)</option>
-                  </select>
+                <div className="space-y-1 pt-1 border-t border-slate-800">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Pressure Class:</span>
+                    <select
+                      value={targets.tank_pressure_class_bar}
+                      onChange={(e) => {
+                        const newP = parseInt(e.target.value, 10);
+                        const nextTargets = { ...targets, tank_pressure_class_bar: newP };
+                        setTargets(nextTargets);
+                        setRecommendation(solveMicrogridComponentSizes(inputs, nextTargets, currentParams));
+                      }}
+                      className="bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-sky-300 font-bold"
+                    >
+                      <option value={1}>1 bar (Atmospheric Gas Holder)</option>
+                      <option value={10}>10 bar (Low-P Buffer)</option>
+                      <option value={30}>30 bar (Direct PEM / Metal Hydride)</option>
+                      <option value={200}>200 bar (Industrial Cylinder Quad)</option>
+                      <option value={350}>350 bar (Type IV Stationary)</option>
+                      <option value={700}>700 bar (Type IV Mobility)</option>
+                    </select>
+                  </div>
+                  {recommendation && (
+                    <div className="bg-[#0e1726] p-1.5 rounded border border-sky-900/50 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400">Required Geometric Vol:</span>
+                      <span className="text-cyan-300 font-bold">
+                        {recommendation.tank_volume_l} Liters ({(recommendation.tank_volume_l / 1000).toFixed(3)} m³)
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

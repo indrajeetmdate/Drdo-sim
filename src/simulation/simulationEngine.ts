@@ -126,24 +126,38 @@ export function calculateH2TankMaxCapacity(
 }
 
 /**
- * Atmospheric Pressure Tedlar Gas Bag Volume Calculation
- * Returns volume in Liters at atmospheric pressure (101,325 Pa = 1.01325 bar) and ambient temperature
+ * Calculate geometric volume in Liters required to store given mass of H2 at pressure p_bar and temperature t_amb_c
+ * Real gas law: V = (Z(P) * n * R * T) / P
  */
-export function calculateTedlarVolumeLiters(
+export function calculateH2TankVolumeForMass(
   m_h2_kg: number,
+  p_bar: number,
   t_amb_c: number = 20.0
 ): number {
-  if (m_h2_kg <= 0) return 0.0;
+  if (m_h2_kg <= 0 || p_bar <= 0) return 0.0;
   const R = 8.3144626;
   const T_kelvin = t_amb_c + 273.15;
-  const p_atm_pa = 101325.0; // 1 atm standard atmospheric pressure
+  const Z = 1.0 + 0.0006 * p_bar;
+  const p_pa = p_bar * 1e5;
   const moles = (m_h2_kg * 1000.0) / 2.016;
-  const v_m3 = (moles * R * T_kelvin) / p_atm_pa;
-  return v_m3 * 1000.0; // Convert m³ to Liters
+  const v_m3 = (Z * moles * R * T_kelvin) / p_pa;
+  return v_m3 * 1000.0; // Liters
 }
 
 /**
- * Helper to allocate surplus solar generation to PEM Electrolyzer between pressurized cylinder and Tedlar bags
+ * Standard Pressure Preset Classes for Hydrogen Storage
+ */
+export const TANK_PRESSURE_PRESETS = [
+  { value: 1, label: '1 bar (Atmospheric Gas Holder)', desc: 'Atmospheric pressure gasometer / expandable vessel' },
+  { value: 10, label: '10 bar (Low-Pressure Buffer)', desc: 'Intermediate buffer vessel / low-pressure receiver' },
+  { value: 30, label: '30 bar (Direct PEM / Metal Hydride)', desc: 'Standard direct electrolyzer output pressure' },
+  { value: 200, label: '200 bar (Industrial Cylinder Quad)', desc: 'Steel cylinder bundles (Type I / II)' },
+  { value: 350, label: '350 bar (Type IV Composite Stationary)', desc: 'Stationary high-pressure composite tank' },
+  { value: 700, label: '700 bar (Type IV Mobility Composite)', desc: 'Ultra-high-pressure carbon composite vessel' },
+] as const;
+
+/**
+ * Helper to allocate surplus solar generation to PEM Electrolyzer and pressurized storage cylinder
  */
 export function allocateH2Production(
   p_surplus_kw: number,
@@ -155,13 +169,12 @@ export function allocateH2Production(
   p_elec_bus: number;
   m_h2_prod: number;
   m_to_tank: number;
-  m_to_tedlar: number;
   v_di_water: number;
   v_o2: number;
   p_curtailed: number;
 } {
   const p_tank_current = calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, t_amb_c);
-  const can_store_h2 = p_tank_current < params.tank_p_max_bar || (params.tedlar_bags_enabled !== false);
+  const can_store_h2 = p_tank_current < params.tank_p_max_bar;
   const P_elec_min = params.elec_k_turndown * params.elec_rated_kw;
 
   if (!can_store_h2 || p_surplus_kw * params.eta_elec_dcdc < P_elec_min) {
@@ -169,7 +182,6 @@ export function allocateH2Production(
       p_elec_bus: 0.0,
       m_h2_prod: 0.0,
       m_to_tank: 0.0,
-      m_to_tedlar: 0.0,
       v_di_water: 0.0,
       v_o2: 0.0,
       p_curtailed: p_surplus_kw,
@@ -182,44 +194,39 @@ export function allocateH2Production(
   const m_tank_max = calculateH2TankMaxCapacity(params.tank_p_max_bar, params.tank_volume_m3, t_amb_c);
   const m_tank_room = Math.max(0.0, m_tank_max - m_h2_tank_kg);
 
-  let m_to_tank = 0.0;
-  let m_to_tedlar = 0.0;
-  let m_h2_prod = 0.0;
+  let m_to_tank = Math.min(raw_m_h2, m_tank_room);
+  let p_curtailed = 0.0;
 
-  if (raw_m_h2 <= m_tank_room) {
-    m_h2_prod = raw_m_h2;
-    m_to_tank = raw_m_h2;
-    m_to_tedlar = 0.0;
-  } else {
-    m_to_tank = m_tank_room;
-    const m_excess = raw_m_h2 - m_tank_room;
-    if (params.tedlar_bags_enabled !== false) {
-      m_to_tedlar = m_excess;
-      m_h2_prod = raw_m_h2;
+  if (raw_m_h2 > m_tank_room) {
+    // Tank is at capacity: throttle electrolyzer to match remaining room
+    if (m_to_tank > 0.0) {
+      P_elec_bus = (m_to_tank * params.sec_elec_kwh_per_kg) / (params.eta_elec_dcdc * dt_hours);
+      p_curtailed = Math.max(0.0, p_surplus_kw - P_elec_bus);
     } else {
-      m_to_tedlar = 0.0;
-      if (m_to_tank > 0) {
-        P_elec_bus = (m_to_tank * params.sec_elec_kwh_per_kg) / (params.eta_elec_dcdc * dt_hours);
-        m_h2_prod = m_to_tank;
-      } else {
-        P_elec_bus = 0.0;
-        m_h2_prod = 0.0;
-      }
+      return {
+        p_elec_bus: 0.0,
+        m_h2_prod: 0.0,
+        m_to_tank: 0.0,
+        v_di_water: 0.0,
+        v_o2: 0.0,
+        p_curtailed: p_surplus_kw,
+      };
     }
+  } else {
+    p_curtailed = Math.max(0.0, p_surplus_kw - P_elec_bus);
   }
 
+  const m_h2_prod = m_to_tank;
   const v_di_water = m_h2_prod * params.di_water_l_per_kg_h2;
   const v_o2 = (m_h2_prod * 11.12) * 0.5;
-  const p_curtailed = Math.max(0.0, p_surplus_kw - P_elec_bus);
 
   return {
-    p_elec_bus: P_elec_bus,
+    p_elec_bus: Math.max(0.0, P_elec_bus),
     m_h2_prod,
     m_to_tank,
-    m_to_tedlar,
     v_di_water,
     v_o2,
-    p_curtailed,
+    p_curtailed: Math.max(0.0, p_curtailed),
   };
 }
 
@@ -243,8 +250,6 @@ export function runSimulation(
   let e_bess_kwh = params.soc_init * params.bess_cap_kwh;
   let soc = params.soc_init;
   let m_h2_tank_kg = params.tank_m_h2_init_kg;
-  let m_h2_tedlar_kg = 0.0;
-  let cum_h2_tedlar_kg = 0.0;
   let fc_active = false;
 
   // Cumulative energy tracking for first-law conservation verification
@@ -321,7 +326,6 @@ export function runSimulation(
     let P_unserved = 0.0;
     let m_h2_prod = 0.0;
     let m_to_tank = 0.0;
-    let m_to_tedlar = 0.0;
     let v_di_water = 0.0;
     let v_o2 = 0.0;
     let m_h2_cons = 0.0;
@@ -354,27 +358,18 @@ export function runSimulation(
         P_bess_chg = Math.min(P_net, P_bess_capacity_accept);
         const P_surplus = P_net - P_bess_chg;
 
-        // If battery didn't take all surplus (due to taper or charge rate ceiling)
-        // If battery reaches >= 0.999 in this step, can remainder go to electrolyzer?
-        // Let's compute post-step SoC estimate
-        const dE_bess_chem = P_bess_chg * params.eta_bess_chg * dt_hours;
-        const post_soc = Math.min(params.soc_max, (e_bess_kwh + dE_bess_chem) / params.bess_cap_kwh);
-
-        if (post_soc >= 0.999 && P_surplus > 0) {
-          // Can produce H2 from leftover surplus!
+        // Any excess power beyond what the BESS can absorb is routed to PEM Electrolyzer!
+        if (P_surplus > 0) {
           const alloc = allocateH2Production(P_surplus, params, m_h2_tank_kg, T_amb, dt_hours);
           P_elec_bus = alloc.p_elec_bus;
           m_h2_prod = alloc.m_h2_prod;
           m_to_tank = alloc.m_to_tank;
-          m_to_tedlar = alloc.m_to_tedlar;
           v_di_water = alloc.v_di_water;
           v_o2 = alloc.v_o2;
           P_curtailed = alloc.p_curtailed;
           if (m_h2_prod > 0) {
-            state = 2; // Electrolyzer engaged
+            state = 2; // Electrolyzer active with solar surplus
           }
-        } else {
-          P_curtailed = P_surplus;
         }
       } else {
         // STATE 2: Excess Solar to PEM Electrolyzer (Battery is fully charged at SoC >= 0.999)
@@ -387,7 +382,6 @@ export function runSimulation(
         P_elec_bus = alloc.p_elec_bus;
         m_h2_prod = alloc.m_h2_prod;
         m_to_tank = alloc.m_to_tank;
-        m_to_tedlar = alloc.m_to_tedlar;
         v_di_water = alloc.v_di_water;
         v_o2 = alloc.v_o2;
         P_curtailed = alloc.p_curtailed;
@@ -484,15 +478,9 @@ export function runSimulation(
       }
     }
 
-    // Update H2 Storage Tank & Tedlar Bags Mass
+    // Update H2 Storage Tank Mass
     m_h2_tank_kg = Math.max(0.0, m_h2_tank_kg + m_to_tank - m_h2_cons);
-    m_h2_tedlar_kg += m_to_tedlar;
-    cum_h2_tedlar_kg += m_to_tedlar;
-
     const p_tank_bar = calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, T_amb);
-    const v_tedlar_liters = calculateTedlarVolumeLiters(m_h2_tedlar_kg, T_amb);
-    const chunk_size = params.tedlar_bag_chunk_l > 0 ? params.tedlar_bag_chunk_l : 10;
-    const tedlar_bags_count = Math.ceil(v_tedlar_liters / chunk_size);
 
     // 4. Electrical Bus & Branch Currents Approximation
     const v_oc_bess = getLiFePO4_16S_OCV(soc);
@@ -582,10 +570,6 @@ export function runSimulation(
       m_h2_cons_kg: m_h2_cons,
       m_h2_tank_kg,
       p_tank_bar,
-      m_h2_tedlar_kg,
-      v_tedlar_liters,
-      tedlar_bags_count,
-      cum_h2_tedlar_kg,
       p_curtailed_kw: P_curtailed,
       p_unserved_kw: P_unserved,
       v_oc_bess_v: v_oc_bess,
@@ -637,12 +621,11 @@ export function runSimulation(
   const h2_chem_energy_consumed_kwh = cum_h2_cons_kg * params.lhv_h2_kwh_per_kg;
   const fc_losses_kwh = Math.max(0.0, h2_chem_energy_consumed_kwh - total_fc_output_kwh);
 
-  // Net storage change in H2 tank & Tedlar atmospheric bags
+  // Net storage change in pressurized H2 tank
   const delta_h2_tank_chem_kwh = (m_h2_tank_kg - initial_h2_tank_kg) * params.lhv_h2_kwh_per_kg;
-  const delta_h2_tedlar_chem_kwh = cum_h2_tedlar_kg * params.lhv_h2_kwh_per_kg;
 
   // Total storage change
-  const delta_storage_kwh = delta_bess_chem_kwh + delta_h2_tank_chem_kwh + delta_h2_tedlar_chem_kwh;
+  const delta_storage_kwh = delta_bess_chem_kwh + delta_h2_tank_chem_kwh;
 
   // Total accounted outputs and irreversibilities
   const e_out_kwh =
@@ -696,14 +679,9 @@ export function runSimulation(
     peak_tank_pressure_bar: peak_tank_p,
     min_tank_pressure_bar: min_tank_p,
     final_tank_pressure_bar: calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, inputs[inputs.length - 1].t_amb_c),
-    tedlar_bags_enabled: params.tedlar_bags_enabled !== false,
-    total_h2_tedlar_kg: cum_h2_tedlar_kg,
-    total_tedlar_volume_liters: calculateTedlarVolumeLiters(cum_h2_tedlar_kg, 20.0),
-    total_tedlar_bags_10l_count: Math.ceil(
-      calculateTedlarVolumeLiters(cum_h2_tedlar_kg, 20.0) /
-        (params.tedlar_bag_chunk_l > 0 ? params.tedlar_bag_chunk_l : 10)
-    ),
-    tedlar_energy_stored_kwh: cum_h2_tedlar_kg * params.lhv_h2_kwh_per_kg,
+    tank_volume_liters: params.tank_volume_m3 * 1000.0,
+    tank_storage_capacity_kg: calculateH2TankMaxCapacity(params.tank_p_max_bar, params.tank_volume_m3, 20.0),
+    tank_pressure_class_bar: params.tank_p_max_bar,
     fc_enabled: params.fc_enabled !== false,
     total_di_water_consumed_l: cum_di_water_l,
     total_o2_produced_nm3: total_o2_nm3,

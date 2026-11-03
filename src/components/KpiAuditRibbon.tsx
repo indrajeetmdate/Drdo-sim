@@ -117,31 +117,25 @@ export const KpiAuditRibbon: React.FC<Props> = ({ summary, isRunning }) => {
         {/* Peak Tank Pressure & Tedlar Bags */}
         <div className="bg-[#131b2c] border border-sky-500/20 rounded p-2 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 font-mono text-[10px] uppercase tracking-wider">
-            <span>H₂ Storage & Tedlar</span>
+            <span>H₂ Storage Tank</span>
             <Gauge className="w-3.5 h-3.5 text-sky-400" />
           </div>
           <div className="mt-1 flex items-baseline gap-1">
             <span className="text-base font-bold text-sky-400 font-mono">
               {summary.peak_tank_pressure_bar.toFixed(1)}
             </span>
-            <span className="text-[10px] text-slate-400">bar</span>
-            {summary.tedlar_bags_enabled && summary.total_tedlar_volume_liters > 0 && (
-              <span className="text-[10px] text-cyan-300 font-mono ml-auto font-bold">
-                +{summary.total_tedlar_volume_liters.toFixed(1)}L
-              </span>
-            )}
+            <span className="text-[10px] text-slate-400">bar peak / {summary.tank_pressure_class_bar}b</span>
+            <span className="text-[10px] text-cyan-300 font-mono ml-auto font-bold">
+              {Math.round(summary.tank_volume_liters)} L
+            </span>
           </div>
-          <div className="text-[10px] text-slate-400 font-mono truncate flex items-center gap-1">
-            {summary.tedlar_bags_enabled ? (
-              <span className="text-cyan-300 truncate">
-                Tedlar: {summary.total_tedlar_volume_liters.toFixed(1)} L ({summary.total_tedlar_bags_10l_count} bags)
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 truncate">
-                <Droplets className="w-3 h-3 text-sky-400 inline" />
-                <span>{summary.total_di_water_consumed_l.toFixed(1)} L DI H₂O</span>
-              </span>
-            )}
+          <div className="text-[10px] text-slate-400 font-mono truncate flex items-center justify-between">
+            <span className="text-cyan-300 truncate">
+              Stored: {summary.final_h2_tank_kg.toFixed(3)} kg H₂
+            </span>
+            <span className="text-slate-400 text-[9px]">
+              {(summary.tank_volume_liters / 1000).toFixed(2)} m³
+            </span>
           </div>
         </div>
 

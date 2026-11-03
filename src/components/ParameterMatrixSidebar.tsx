@@ -160,7 +160,7 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                     bess_dis_max_kw: 0.8,
                     elec_rated_kw: 0.5,
                     tank_volume_m3: 0.05,
-                    tank_m_h2_init_kg: 0.04,
+                    tank_m_h2_init_kg: 0.02,
                     fc_rated_kw: 0.3,
                     fc_opt_setpoint_kw: 0.2,
                   });
@@ -430,36 +430,78 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                   className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-cyan-400"
                 />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">Tank Volume [Liters]:</span>
-                <input
-                  type="number"
-                  step="10"
-                  min="10"
-                  value={Math.round(params.tank_volume_m3 * 1000)}
-                  onChange={(e) =>
-                    updateNumeric('tank_volume_m3', (parseFloat(e.target.value) || 500) / 1000.0)
-                  }
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
-                />
+              {/* Pressure Class Selector */}
+              <div className="space-y-1.5 pt-1 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-300 font-semibold">Pressure Tier:</span>
+                  <select
+                    value={params.tank_p_max_bar}
+                    onChange={(e) => {
+                      const newP = parseFloat(e.target.value) || 30;
+                      updateNumeric('tank_p_max_bar', newP);
+                    }}
+                    className="bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-sky-300 font-bold focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value={1}>1 bar (Atmospheric Gas Holder)</option>
+                    <option value={10}>10 bar (Low-P Buffer)</option>
+                    <option value={30}>30 bar (Direct PEM / Metal Hydride)</option>
+                    <option value={200}>200 bar (Industrial Cylinder)</option>
+                    <option value={350}>350 bar (Type IV Stationary)</option>
+                    <option value={700}>700 bar (Type IV Mobility)</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">Custom P_max [bar]:</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="1"
+                    max="1000"
+                    value={params.tank_p_max_bar}
+                    onChange={(e) => updateNumeric('tank_p_max_bar', parseFloat(e.target.value) || 30)}
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">Tank P_max [bar]:</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="5"
-                  max="700"
-                  value={params.tank_p_max_bar}
-                  onChange={(e) => updateNumeric('tank_p_max_bar', parseFloat(e.target.value) || 30)}
-                  className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
-                />
+
+              {/* Tank Volume */}
+              <div className="space-y-1 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">Geometric Vol [L]:</span>
+                  <input
+                    type="number"
+                    step="10"
+                    min="1"
+                    value={Math.round(params.tank_volume_m3 * 1000)}
+                    onChange={(e) =>
+                      updateNumeric('tank_volume_m3', (parseFloat(e.target.value) || 500) / 1000.0)
+                    }
+                    className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-cyan-300 font-bold focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                  <span>Physical m³:</span>
+                  <span className="text-slate-400">{params.tank_volume_m3.toFixed(3)} m³</span>
+                </div>
+                <div className="bg-[#0b1424] p-1.5 rounded border border-sky-950 flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-slate-400">Storage Capacity:</span>
+                  <span className="text-sky-300 font-bold">
+                    {(
+                      ((params.tank_p_max_bar * 1e5 * params.tank_volume_m3) /
+                        ((1.0 + 0.0006 * params.tank_p_max_bar) * 8.3144626 * 293.15) *
+                        2.016) /
+                      1000.0
+                    ).toFixed(3)}{' '}
+                    kg H₂
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
+
+              <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-slate-400">Initial H₂ Mass [kg]:</span>
                 <input
                   type="number"
-                  step="0.05"
+                  step="0.01"
                   min="0"
                   value={params.tank_m_h2_init_kg}
                   onChange={(e) =>
@@ -467,54 +509,6 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
                   }
                   className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-slate-300 focus:outline-none focus:border-cyan-400"
                 />
-              </div>
-
-              {/* Atmospheric Tedlar Gas Storage Bags Option */}
-              <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] text-sky-300 font-medium flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={params.tedlar_bags_enabled !== false}
-                      onChange={(e) =>
-                        onChangeParams({
-                          ...params,
-                          tedlar_bags_enabled: e.target.checked,
-                        })
-                      }
-                      className="accent-sky-400 rounded cursor-pointer"
-                    />
-                    <span>Tedlar Bags (Atmospheric)</span>
-                  </label>
-                  <span
-                    className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded ${
-                      params.tedlar_bags_enabled !== false
-                        ? 'bg-sky-950/80 text-sky-300 border border-sky-800'
-                        : 'bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {params.tedlar_bags_enabled !== false ? 'ACTIVE' : 'OFF'}
-                  </span>
-                </div>
-                {params.tedlar_bags_enabled !== false && (
-                  <div className="flex items-center justify-between pl-4">
-                    <span className="text-[10px] text-slate-400">Chunk Size [Liters]:</span>
-                    <input
-                      type="number"
-                      step="5"
-                      min="5"
-                      max="100"
-                      value={params.tedlar_bag_chunk_l || 10}
-                      onChange={(e) =>
-                        updateNumeric('tedlar_bag_chunk_l', parseFloat(e.target.value) || 10)
-                      }
-                      className="w-20 bg-[#162136] border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-sky-300 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-                )}
-                <p className="text-[9.5px] text-slate-400/80 italic pl-1 leading-tight">
-                  Stores excess H₂ at 1.013 bar when pressurized cylinder is full. Volume displayed in Liters & modular {params.tedlar_bag_chunk_l || 10}L chunks.
-                </p>
               </div>
             </div>
           )}

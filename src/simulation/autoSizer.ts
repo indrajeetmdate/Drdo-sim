@@ -145,6 +145,7 @@ export function solveMicrogridComponentSizes(
     elec_rated_kw: elecRatedKw,
     fc_rated_kw: fcRatedKw,
     tank_volume_l: tankVolumeL,
+    tank_volume_m3: tankVolumeL / 1000.0,
     tank_pressure_bar: pRatingBar,
     di_water_tank_l: diWaterTankL,
     explanation: {
@@ -152,7 +153,7 @@ export function solveMicrogridComponentSizes(
       bess: `Sized for ${bessCapacityKwh} kWh (${Math.round(bessCapacityAh)} Ah @ 51.2V) to guarantee ${targets.target_autonomy_nights} night(s) autonomy at max ${targets.max_allowable_dod_percent}% DoD.`,
       elec: `Sized for ${elecRatedKw} kW to capture peak afternoon solar surplus and synthesize required H2 without thermal throttling.`,
       fc: `Sized for ${fcRatedKw} kW to cover 100% of peak evening demand (${peakLoadKw.toFixed(2)} kW) during extended overcast periods.`,
-      tank: `Sized for ${tankVolumeL} L at ${pRatingBar} bar to hold ${storageH2Kg.toFixed(2)} kg H2 (4-day strategic autonomy buffer).`,
+      tank: `Sized for ${tankVolumeL} L (${(tankVolumeL / 1000).toFixed(3)} m³) at ${pRatingBar} bar to store ${storageH2Kg.toFixed(2)} kg H2 (4-day strategic buffer).`,
       water: `Sized for ${diWaterTankL} L to supply 30 days of DI water without replenishment at ${targetH2Kg.toFixed(2)} kg/day production.`,
     },
   };
