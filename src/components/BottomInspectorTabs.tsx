@@ -43,7 +43,7 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   activeStep,
   onSelectStepIndex,
 }) => {
-  const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('diagram');
+  const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('table');
   const [diagramSubView, setDiagramSubView] = useState<'interactive' | 'schematic'>('interactive');
 
   // Tab A: Table search & pagination state
@@ -374,6 +374,8 @@ export const BottomInspectorTabs: React.FC<Props> = ({
                     <th className="p-1.5 border-r border-slate-800 text-cyan-400">P_elec [kW]</th>
                     <th className="p-1.5 border-r border-slate-800 text-cyan-300">m_H₂ [kg]</th>
                     <th className="p-1.5 border-r border-slate-800 text-purple-400">P_fc [kW]</th>
+                    <th className="p-1.5 border-r border-slate-800 text-orange-400">Q_th [kW]</th>
+                    <th className="p-1.5 border-r border-slate-800 text-amber-300">Water [L]</th>
                     <th className="p-1.5 border-r border-slate-800 text-sky-400">P_tank [bar]</th>
                     <th className="p-1.5 border-r border-slate-800 text-cyan-300">m_tank [kg]</th>
                     <th className="p-1.5 border-r border-slate-800 text-slate-400">Curt [kW]</th>
@@ -427,6 +429,12 @@ export const BottomInspectorTabs: React.FC<Props> = ({
                       </td>
                       <td className="p-1.5 border-r border-slate-800/60 text-purple-400 text-right">
                         {r.p_fc_bus_kw > 0 ? r.p_fc_bus_kw.toFixed(2) : '-'}
+                      </td>
+                      <td className="p-1.5 border-r border-slate-800/60 text-orange-400 text-right">
+                        {r.q_burner_th_kw > 0 ? r.q_burner_th_kw.toFixed(2) : '-'}
+                      </td>
+                      <td className="p-1.5 border-r border-slate-800/60 text-amber-300 text-right">
+                        {r.v_hot_water_l > 0 ? r.v_hot_water_l.toFixed(1) : '-'}
                       </td>
                       <td className="p-1.5 border-r border-slate-800/60 text-sky-400 text-right font-semibold">
                         {r.p_tank_bar.toFixed(1)}

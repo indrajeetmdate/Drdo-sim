@@ -54,6 +54,15 @@ export const DEFAULT_PARAMETERS_1_TO_1: SystemParameters = {
   soc_fc_trigger_on: 0.25,   // Turn FC ON when battery drops to 25%
   soc_fc_trigger_off: 0.35,  // Turn FC OFF when battery recharges to 35%
   soc_absorption_taper: 0.90,// Taper charge power above 90% SoC
+  fc_dispatch_mode: 'backup_on_low_bess',
+
+  // Thermal Hydrogen Water Heater / Catalytic Boiler
+  h2_burner_enabled: false,
+  h2_burner_mode: 'disabled',
+  h2_burner_eta: 0.90,
+  h2_burner_target_temp_c: 60.0,
+  h2_burner_inlet_temp_c: 15.0,
+  h2_burner_demand_th_kw: 2.0,
 };
 
 /**
@@ -99,6 +108,15 @@ export const DEFAULT_PARAMETERS_1_TO_10: SystemParameters = {
   soc_fc_trigger_on: 0.25,
   soc_fc_trigger_off: 0.35,
   soc_absorption_taper: 0.90,
+  fc_dispatch_mode: 'backup_on_low_bess',
+
+  // Thermal Hydrogen Water Heater / Catalytic Boiler
+  h2_burner_enabled: false,
+  h2_burner_mode: 'disabled',
+  h2_burner_eta: 0.90,
+  h2_burner_target_temp_c: 60.0,
+  h2_burner_inlet_temp_c: 15.0,
+  h2_burner_demand_th_kw: 0.25,
 };
 
 /**

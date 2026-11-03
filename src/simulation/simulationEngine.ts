@@ -189,7 +189,8 @@ export function allocateH2Production(
   params: SystemParameters,
   m_h2_tank_kg: number,
   t_amb_c: number,
-  dt_hours: number
+  dt_hours: number,
+  bypassTankStorage: boolean = false
 ): {
   p_elec_bus: number;
   m_h2_prod: number;
@@ -199,7 +200,7 @@ export function allocateH2Production(
   p_curtailed: number;
 } {
   const p_tank_current = calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, t_amb_c);
-  const can_store_h2 = p_tank_current < params.tank_p_max_bar;
+  const can_store_h2 = bypassTankStorage || p_tank_current < params.tank_p_max_bar;
   const P_elec_min = params.elec_k_turndown * params.elec_rated_kw;
 
   if (!can_store_h2 || p_surplus_kw * params.eta_elec_dcdc < P_elec_min) {
@@ -215,6 +216,21 @@ export function allocateH2Production(
 
   let P_elec_bus = Math.min(p_surplus_kw, params.elec_rated_kw / params.eta_elec_dcdc);
   const raw_m_h2 = (P_elec_bus * params.eta_elec_dcdc * dt_hours) / params.sec_elec_kwh_per_kg;
+
+  if (bypassTankStorage) {
+    // Direct bypass: 100% of produced H2 is routed to thermal burner, bypassing tank capacity constraints
+    const v_di_water = raw_m_h2 * params.di_water_l_per_kg_h2;
+    const v_o2 = raw_m_h2 * 5.56;
+    const p_curtailed = Math.max(0.0, p_surplus_kw - P_elec_bus);
+    return {
+      p_elec_bus: P_elec_bus,
+      m_h2_prod: raw_m_h2,
+      m_to_tank: 0.0,
+      v_di_water,
+      v_o2,
+      p_curtailed,
+    };
+  }
 
   const m_tank_max = calculateH2TankMaxCapacity(params.tank_p_max_bar, params.tank_volume_m3, t_amb_c);
   const m_tank_room = Math.max(0.0, m_tank_max - m_h2_tank_kg);
@@ -295,7 +311,10 @@ export function runSimulation(
   let cum_curtailed_kwh = 0.0;
   let cum_h2_prod_kg = 0.0;
   let cum_h2_cons_kg = 0.0;
+  let cum_h2_burned_kg = 0.0;
   let cum_di_water_l = 0.0;
+  let total_thermal_energy_kwh = 0.0;
+  let total_hot_water_l = 0.0;
 
   let total_bess_charged_kwh = 0.0;
   let total_bess_discharged_kwh = 0.0;
@@ -366,6 +385,18 @@ export function runSimulation(
     let v_o2 = 0.0;
     let m_h2_cons = 0.0;
 
+    // Thermal Catalytic Hydrogen Water Heater / Burner Configuration
+    const burner_mode: H2BurnerMode = params.h2_burner_mode || (params.h2_burner_enabled ? 'direct_bypass' : 'disabled');
+    const is_bypass_active = burner_mode === 'direct_bypass';
+    const is_fc_available = params.fc_enabled !== false && !is_bypass_active;
+    const fc_dispatch_mode = params.fc_dispatch_mode || 'backup_on_low_bess';
+
+    let q_burner_th = 0.0;
+    let m_h2_burned = 0.0;
+    let v_hot_water_l = 0.0;
+    let t_water_out = params.h2_burner_target_temp_c ?? 60.0;
+    let h2_burner_active = false;
+
     // Check current tank pressure before decision
     const p_tank_current = calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, T_amb);
 
@@ -396,7 +427,7 @@ export function runSimulation(
 
         // Any excess power beyond what the BESS can absorb is routed to PEM Electrolyzer!
         if (P_surplus > 0) {
-          const alloc = allocateH2Production(P_surplus, params, m_h2_tank_kg, T_amb, dt_hours);
+          const alloc = allocateH2Production(P_surplus, params, m_h2_tank_kg, T_amb, dt_hours, is_bypass_active);
           P_elec_bus = alloc.p_elec_bus;
           m_h2_prod = alloc.m_h2_prod;
           m_to_tank = alloc.m_to_tank;
@@ -414,7 +445,7 @@ export function runSimulation(
         P_bess_chg = Math.min(P_net, Math.max(0.0, max_bess_absorb_energy_power));
         const P_surplus = Math.max(0.0, P_net - P_bess_chg);
 
-        const alloc = allocateH2Production(P_surplus, params, m_h2_tank_kg, T_amb, dt_hours);
+        const alloc = allocateH2Production(P_surplus, params, m_h2_tank_kg, T_amb, dt_hours, is_bypass_active);
         P_elec_bus = alloc.p_elec_bus;
         m_h2_prod = alloc.m_h2_prod;
         m_to_tank = alloc.m_to_tank;
@@ -433,15 +464,29 @@ export function runSimulation(
       );
       const P_bess_dis_limit = Math.min(params.bess_dis_max_kw, max_bess_dis_energy_power);
 
-      // Check if Fuel Cell latch should turn ON (only if params.fc_enabled is not false)
-      const is_fc_available = params.fc_enabled !== false;
-      if (is_fc_available && soc <= params.soc_fc_trigger_on && m_h2_tank_kg > params.tank_m_h2_min_kg) {
-        fc_active = true;
-      } else if (!is_fc_available) {
+      const has_stored_h2 = m_h2_tank_kg > params.tank_m_h2_min_kg;
+
+      // Fuel cell activation based on configured dispatch mode
+      if (is_fc_available && has_stored_h2) {
+        if (fc_dispatch_mode === 'load_following') {
+          // Actively takes the load deficit from the system first
+          fc_active = true;
+        } else if (fc_dispatch_mode === 'night_continuous') {
+          // Continuous generator during night or low-solar
+          if (P_pv_bus <= 0.05) {
+            fc_active = true;
+          }
+        } else {
+          // Default: BESS backup latch when battery drops below trigger threshold
+          if (soc <= params.soc_fc_trigger_on) {
+            fc_active = true;
+          }
+        }
+      } else {
         fc_active = false;
       }
 
-      if (is_fc_available && fc_active && m_h2_tank_kg > params.tank_m_h2_min_kg) {
+      if (is_fc_available && fc_active && has_stored_h2) {
         // STATE 4: PEM Fuel Cell Range-Extender Mode
         state = 4;
 
@@ -497,6 +542,34 @@ export function runSimulation(
       }
     }
 
+    // 2b. Thermal Hydrogen Water Heater / Burner Dispatch
+    if (is_bypass_active) {
+      // Direct Bypass: All H2 produced by electrolyzer directly enters burner and bypasses storage/FC
+      m_h2_burned = m_h2_prod;
+      if (m_h2_burned > 0) {
+        h2_burner_active = true;
+        const eta_b = params.h2_burner_eta ?? 0.90;
+        q_burner_th = (m_h2_burned * params.lhv_h2_kwh_per_kg * eta_b) / dt_hours;
+        const delta_t = Math.max(5.0, (params.h2_burner_target_temp_c ?? 60.0) - (params.h2_burner_inlet_temp_c ?? 15.0));
+        v_hot_water_l = (q_burner_th * dt_hours * 3600.0) / (4.184 * delta_t);
+      }
+    } else if (burner_mode === 'from_storage') {
+      // From Storage: Burner draws H2 from pressurized tank to heat water
+      const demand_th = params.h2_burner_demand_th_kw ?? (params.scale === '1:10' ? 0.25 : 2.0);
+      const eta_b = params.h2_burner_eta ?? 0.90;
+      const h2_needed_kg = (demand_th * dt_hours) / (params.lhv_h2_kwh_per_kg * eta_b);
+      const avail_for_burn = Math.max(0.0, m_h2_tank_kg - params.tank_m_h2_min_kg);
+      m_h2_burned = Math.min(h2_needed_kg, avail_for_burn);
+      if (m_h2_burned > 0) {
+        h2_burner_active = true;
+        q_burner_th = (m_h2_burned * params.lhv_h2_kwh_per_kg * eta_b) / dt_hours;
+        const delta_t = Math.max(5.0, (params.h2_burner_target_temp_c ?? 60.0) - (params.h2_burner_inlet_temp_c ?? 15.0));
+        v_hot_water_l = (q_burner_th * dt_hours * 3600.0) / (4.184 * delta_t);
+        // Burned H2 is extracted from storage
+        m_h2_tank_kg = Math.max(0.0, m_h2_tank_kg - m_h2_burned);
+      }
+    }
+
     // 3. State Integrations
     // Update BESS chemical energy
     if (P_bess_chg > 0) {
@@ -509,12 +582,17 @@ export function runSimulation(
 
     // Check State 4 latch reset conditions for next step
     if (fc_active) {
-      if (params.fc_enabled === false || soc >= params.soc_fc_trigger_off || m_h2_tank_kg <= params.tank_m_h2_min_kg) {
+      if (
+        !is_fc_available ||
+        m_h2_tank_kg <= params.tank_m_h2_min_kg ||
+        (fc_dispatch_mode === 'backup_on_low_bess' && soc >= params.soc_fc_trigger_off) ||
+        (fc_dispatch_mode === 'night_continuous' && P_pv_bus > 0.05)
+      ) {
         fc_active = false;
       }
     }
 
-    // Update H2 Storage Tank Mass
+    // Update H2 Storage Tank Mass (m_to_tank is 0 in direct bypass mode)
     m_h2_tank_kg = Math.max(0.0, m_h2_tank_kg + m_to_tank - m_h2_cons);
     const p_tank_bar = calculateH2TankPressure(m_h2_tank_kg, params.tank_volume_m3, T_amb);
 
@@ -550,7 +628,10 @@ export function runSimulation(
     cum_curtailed_kwh += P_curtailed * dt_hours;
     cum_h2_prod_kg += m_h2_prod;
     cum_h2_cons_kg += m_h2_cons;
+    cum_h2_burned_kg += m_h2_burned;
     cum_di_water_l += v_di_water;
+    total_thermal_energy_kwh += q_burner_th * dt_hours;
+    total_hot_water_l += v_hot_water_l;
 
     total_bess_charged_kwh += P_bess_chg * dt_hours;
     total_bess_discharged_kwh += P_bess_dis * dt_hours;
@@ -604,6 +685,11 @@ export function runSimulation(
       v_o2_nm3: v_o2,
       p_fc_bus_kw: P_fc_bus,
       m_h2_cons_kg: m_h2_cons,
+      q_burner_th_kw: q_burner_th,
+      m_h2_burned_kg: m_h2_burned,
+      v_hot_water_l,
+      t_water_out_c: t_water_out,
+      h2_burner_active,
       m_h2_tank_kg,
       p_tank_bar,
       p_curtailed_kw: P_curtailed,
@@ -657,6 +743,12 @@ export function runSimulation(
   const h2_chem_energy_consumed_kwh = cum_h2_cons_kg * params.lhv_h2_kwh_per_kg;
   const fc_losses_kwh = Math.max(0.0, h2_chem_energy_consumed_kwh - total_fc_output_kwh);
 
+  // Catalytic Burner chemical in = cum_h2_burned_kg * LHV_h2
+  // Burner thermal output = total_thermal_energy_kwh
+  const h2_chem_energy_burned_kwh = cum_h2_burned_kg * params.lhv_h2_kwh_per_kg;
+  const burner_thermal_output_kwh = total_thermal_energy_kwh;
+  const burner_losses_kwh = Math.max(0.0, h2_chem_energy_burned_kwh - burner_thermal_output_kwh);
+
   // Net storage change in pressurized H2 tank
   const delta_h2_tank_chem_kwh = (m_h2_tank_kg - initial_h2_tank_kg) * params.lhv_h2_kwh_per_kg;
 
@@ -669,7 +761,9 @@ export function runSimulation(
     cum_curtailed_kwh +
     bess_losses_kwh +
     elec_losses_kwh +
-    fc_losses_kwh;
+    fc_losses_kwh +
+    burner_thermal_output_kwh +
+    burner_losses_kwh;
 
   // First Law Balance: E_in = E_out + delta_storage
   const energy_residual_kwh = Math.abs(e_in_kwh - (e_out_kwh + delta_storage_kwh));
@@ -719,6 +813,11 @@ export function runSimulation(
     tank_storage_capacity_kg: calculateH2TankMaxCapacity(params.tank_p_max_bar, params.tank_volume_m3, 20.0),
     tank_pressure_class_bar: params.tank_p_max_bar,
     fc_enabled: params.fc_enabled !== false,
+    fc_dispatch_mode: params.fc_dispatch_mode || 'backup_on_low_bess',
+    h2_burner_mode: params.h2_burner_mode || (params.h2_burner_enabled ? 'direct_bypass' : 'disabled'),
+    total_thermal_energy_kwh: total_thermal_energy_kwh,
+    total_h2_burned_kg: cum_h2_burned_kg,
+    total_hot_water_produced_l: total_hot_water_l,
     total_di_water_consumed_l: cum_di_water_l,
     total_o2_produced_nm3: total_o2_nm3,
     elec_total_input_kwh: total_elec_input_kwh,

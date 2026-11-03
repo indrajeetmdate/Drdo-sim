@@ -31,6 +31,7 @@ export type SubsystemId =
   | 'elec'
   | 'tank'
   | 'fc'
+  | 'burner'
   | 'load'
   | 'daq';
 
@@ -92,6 +93,7 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
           {subsystem === 'elec' && <Droplets className="w-4 h-4 text-cyan-400" />}
           {subsystem === 'tank' && <Gauge className="w-4 h-4 text-sky-400" />}
           {subsystem === 'fc' && <Flame className="w-4 h-4 text-purple-400" />}
+          {subsystem === 'burner' && <Flame className="w-4 h-4 text-orange-400" />}
           {subsystem === 'load' && <Activity className="w-4 h-4 text-rose-400" />}
           {subsystem === 'daq' && <Sliders className="w-4 h-4 text-cyan-300" />}
           <div>
@@ -103,6 +105,7 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
               {subsystem === 'elec' && 'PEM Electrolyzer Subsystem'}
               {subsystem === 'tank' && 'H₂ Storage Vessel (Pressure Adjust)'}
               {subsystem === 'fc' && 'PEM Fuel Cell Subsystem'}
+              {subsystem === 'burner' && 'H₂ Water Heater & Catalytic Boiler'}
               {subsystem === 'load' && 'Programmable DC Load'}
               {subsystem === 'daq' && 'Supervisory DAQ Controller'}
             </h3>
@@ -906,7 +909,7 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 >
                   {params.fc_enabled !== false
                     ? currentStep?.fc_active
-                      ? 'ACTIVE BACKUP'
+                      ? '⚡ ACTIVE LOAD SUPPLY'
                       : 'STANDBY'
                     : 'P2G STANDALONE'}
                 </span>
@@ -925,6 +928,31 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Diagnostic Explanation Banner: Why FC is or isn't taking load */}
+              {params.fc_enabled !== false && currentStep && (
+                <div className={`mt-2 p-2 rounded text-[10px] border ${
+                  currentStep.fc_active
+                    ? 'bg-purple-950/60 border-purple-600/50 text-purple-200'
+                    : 'bg-slate-900 border-slate-700 text-slate-300'
+                }`}>
+                  <div className="flex items-center gap-1 font-bold mb-0.5">
+                    {currentStep.fc_active ? <Zap className="w-3 h-3 text-purple-400" /> : <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                    <span>
+                      {currentStep.fc_active
+                        ? 'Fuel Cell is supplying load deficit & charging BESS'
+                        : params.fc_dispatch_mode === 'load_following'
+                        ? 'Standby: Solar generation covers load, or stored H₂ empty'
+                        : `Standby: BESS SoC (${(currentStep.soc * 100).toFixed(1)}%) is above Turn-ON trigger (${(params.soc_fc_trigger_on * 100).toFixed(0)}%)`}
+                    </span>
+                  </div>
+                  {!currentStep.fc_active && params.fc_dispatch_mode !== 'load_following' && (
+                    <p className="text-slate-400 leading-tight">
+                      To have the Fuel Cell take the load immediately whenever solar is absent or load deficit occurs, select <strong>Load Following</strong> mode below.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* FC Controls */}
@@ -945,6 +973,42 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                   onChange={(e) => updateBoolean('fc_enabled', e.target.checked)}
                   className="w-4 h-4 accent-purple-500 cursor-pointer"
                 />
+              </div>
+
+              {/* Dispatch Strategy Mode Selector */}
+              <div className="space-y-1.5 pb-2 border-b border-slate-800">
+                <span className="text-slate-300 text-[11px] font-bold block">
+                  Fuel Cell Dispatch Philosophy:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => onChangeParams({ ...params, fc_dispatch_mode: 'backup_on_low_bess' })}
+                    className={`p-1.5 rounded text-left border transition ${
+                      (params.fc_dispatch_mode || 'backup_on_low_bess') === 'backup_on_low_bess'
+                        ? 'bg-purple-950/80 border-purple-500 text-purple-200 font-bold'
+                        : 'bg-[#121929] border-slate-700 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold">1. BESS Backup Mode</div>
+                    <div className="text-[9px] text-slate-400 font-sans leading-tight">
+                      Latches ON only when battery drops below trigger SoC
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => onChangeParams({ ...params, fc_dispatch_mode: 'load_following' })}
+                    className={`p-1.5 rounded text-left border transition ${
+                      params.fc_dispatch_mode === 'load_following'
+                        ? 'bg-purple-950/80 border-purple-500 text-purple-200 font-bold'
+                        : 'bg-[#121929] border-slate-700 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold text-cyan-300">2. Load-Following Mode</div>
+                    <div className="text-[9px] text-slate-400 font-sans leading-tight">
+                      Takes the load deficit first whenever solar is absent
+                    </div>
+                  </button>
+                </div>
               </div>
 
               {/* Rated Power */}
@@ -993,15 +1057,32 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                     {(params.soc_fc_trigger_on * 100).toFixed(0)}% SoC
                   </span>
                 </div>
+                <div className="flex items-center gap-1.5 flex-wrap pb-1">
+                  <span className="text-[10px] text-slate-500">Quick Set:</span>
+                  {[0.25, 0.35, 0.45, 0.55].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => updateNumeric('soc_fc_trigger_on', val)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
+                        Math.abs(params.soc_fc_trigger_on - val) < 0.02
+                          ? 'bg-rose-950 text-rose-300 border-rose-500 font-bold'
+                          : 'bg-[#141e33] text-slate-400 border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      {(val * 100).toFixed(0)}%
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="range"
                   min="0.15"
-                  max="0.40"
+                  max="0.60"
                   step="0.01"
                   value={params.soc_fc_trigger_on}
                   onChange={(e) => updateNumeric('soc_fc_trigger_on', parseFloat(e.target.value) || 0.25)}
                   className="w-full accent-rose-500 cursor-pointer"
                 />
+
                 <div className="flex items-center justify-between text-[11px] pt-1">
                   <span className="text-slate-300">Turn-OFF Trigger:</span>
                   <span className="text-emerald-400 font-bold">
@@ -1011,12 +1092,177 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 <input
                   type="range"
                   min="0.25"
-                  max="0.55"
+                  max="0.75"
                   step="0.01"
                   value={params.soc_fc_trigger_off}
                   onChange={(e) => updateNumeric('soc_fc_trigger_off', parseFloat(e.target.value) || 0.35)}
                   className="w-full accent-emerald-500 cursor-pointer"
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* SUBSYSTEM: H2 CATALYTIC WATER HEATER / THERMAL BOILER     */}
+        {/* ========================================================= */}
+        {subsystem === 'burner' && (
+          <div className="space-y-3.5">
+            {/* Live Burner Status */}
+            <div className="bg-[#241309] p-2.5 rounded border border-orange-500/40 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-orange-300 font-bold uppercase tracking-wider">
+                  Live Thermal Heating Output
+                </span>
+                <span
+                  className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ${
+                    currentStep?.h2_burner_active
+                      ? 'bg-orange-950 text-orange-200 border border-orange-500'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {currentStep?.h2_burner_active
+                    ? '🔥 COMBUSTION ACTIVE'
+                    : (params.h2_burner_mode === 'direct_bypass'
+                    ? 'BYPASS READY (WAITING SOLAR)'
+                    : 'STANDBY')}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-400 text-[10px] block">Thermal Heat:</span>
+                  <span className="font-bold text-orange-300 text-sm">
+                    {currentStep ? (currentStep.q_burner_th_kw || 0).toFixed(2) : '0.00'} kW_th
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[10px] block">Hot Water Produced:</span>
+                  <span className="font-bold text-amber-300">
+                    {currentStep ? ((currentStep.v_hot_water_l || 0) / 0.25).toFixed(1) : '0.0'} L/h
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[10px] block">H₂ Burn Rate:</span>
+                  <span className="font-bold text-orange-200">
+                    {currentStep ? (((currentStep.m_h2_burned_kg || 0) * 1000) / 0.25).toFixed(1) : '0.0'} g/h
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[10px] block">Water Temp Out:</span>
+                  <span className="font-bold text-amber-200">
+                    {params.h2_burner_target_temp_c || 60}°C
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Operating Mode Selector */}
+            <div className="space-y-2 bg-[#0e1626] p-3 rounded border border-slate-800">
+              <span className="text-slate-300 text-[11px] font-bold block">
+                Thermal Heating Operation Mode:
+              </span>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => onChangeParams({ ...params, h2_burner_enabled: true, h2_burner_mode: 'direct_bypass' })}
+                  className={`w-full p-2 rounded text-left border transition ${
+                    params.h2_burner_mode === 'direct_bypass'
+                      ? 'bg-orange-950/80 border-orange-500 text-orange-200 font-bold'
+                      : 'bg-[#121929] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold text-orange-300">
+                    🔥 1. Direct H₂ Bypass (No Tank / No FC)
+                  </div>
+                  <div className="text-[9.5px] text-slate-300 font-sans leading-tight mt-0.5">
+                    100% of H₂ produced by electrolyzer bypasses the storage vessel and fuel cell to directly heat water. Electrolyzer operates unconstrained by tank pressure limits.
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => onChangeParams({ ...params, h2_burner_enabled: true, h2_burner_mode: 'from_storage' })}
+                  className={`w-full p-2 rounded text-left border transition ${
+                    params.h2_burner_mode === 'from_storage'
+                      ? 'bg-amber-950/80 border-amber-500 text-amber-200 font-bold'
+                      : 'bg-[#121929] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold text-amber-300">
+                    ♨️ 2. From H₂ Storage (Tank-Buffered Heating)
+                  </div>
+                  <div className="text-[9.5px] text-slate-300 font-sans leading-tight mt-0.5">
+                    H₂ is compressed and stored in the tank. The water heater draws from the tank to deliver steady hot water on demand.
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => onChangeParams({ ...params, h2_burner_enabled: false, h2_burner_mode: 'disabled' })}
+                  className={`w-full p-1.5 rounded text-left border transition ${
+                    !params.h2_burner_enabled || params.h2_burner_mode === 'disabled'
+                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#121929] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold">3. Disabled (Standard Power Microgrid)</div>
+                </button>
+              </div>
+
+              {/* Boiler Parameters */}
+              <div className="pt-2 border-t border-slate-800 space-y-2.5">
+                {params.h2_burner_mode === 'from_storage' && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300">Thermal Demand Setpoint:</span>
+                      <span className="text-orange-300 font-bold">
+                        {(params.h2_burner_demand_th_kw || 1.0).toFixed(2)} kW_th
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="10.0"
+                      step="0.1"
+                      value={params.h2_burner_demand_th_kw || 1.0}
+                      onChange={(e) => updateNumeric('h2_burner_demand_th_kw', parseFloat(e.target.value) || 1.0)}
+                      className="w-full accent-orange-500 cursor-pointer"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300">Boiler Thermal Efficiency:</span>
+                    <span className="text-slate-200 font-bold">
+                      {((params.h2_burner_eta || 0.90) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.80"
+                    max="0.98"
+                    step="0.01"
+                    value={params.h2_burner_eta || 0.90}
+                    onChange={(e) => updateNumeric('h2_burner_eta', parseFloat(e.target.value) || 0.90)}
+                    className="w-full accent-orange-500 cursor-pointer"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300">Hot Water Delivery Temp:</span>
+                    <span className="text-amber-300 font-bold">
+                      {params.h2_burner_target_temp_c || 60}°C
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="40"
+                    max="85"
+                    step="1"
+                    value={params.h2_burner_target_temp_c || 60}
+                    onChange={(e) => updateNumeric('h2_burner_target_temp_c', parseFloat(e.target.value) || 60)}
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                </div>
               </div>
             </div>
           </div>

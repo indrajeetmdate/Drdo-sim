@@ -3,6 +3,7 @@ import {
   TimeSeriesOutputStep,
   SystemParameters,
   DispatchState,
+  H2BurnerMode,
 } from '../types/microgrid';
 import {
   Activity,
@@ -74,6 +75,49 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
 
   // Subsystem click-to-edit drawer state
   const [selectedSubsystem, setSelectedSubsystem] = useState<SubsystemId | null>(null);
+
+  // Fullscreen state
+  const [isInternalFullscreen, setIsInternalFullscreen] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDiagramFullscreen = isFullscreen !== undefined ? isFullscreen : isInternalFullscreen;
+
+  const toggleFullscreen = () => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+    } else {
+      if (!isInternalFullscreen) {
+        if (containerRef.current?.requestFullscreen) {
+          containerRef.current.requestFullscreen().catch(() => {});
+        }
+        setIsInternalFullscreen(true);
+      } else {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+        setIsInternalFullscreen(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsInternalFullscreen(!!document.fullscreenElement);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isDiagramFullscreen) {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+        setIsInternalFullscreen(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDiagramFullscreen]);
 
   // Tablet zoom state
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -169,6 +213,18 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   const maxStorageKg = calculateH2TankMaxCapacity(params.tank_p_max_bar, params.tank_volume_m3, activeStep.t_amb_c);
   const realGasZ = 1.0 + 0.0006 * params.tank_p_max_bar;
 
+  // Thermal Catalytic Water Heater / Burner variables
+  const burnerMode: H2BurnerMode = params.h2_burner_mode || (params.h2_burner_enabled ? 'direct_bypass' : 'disabled');
+  const isBypassActive = burnerMode === 'direct_bypass';
+  const burnerIsActive = (activeStep.q_burner_th_kw || 0) > 0 || !!activeStep.h2_burner_active;
+  const q_burner_w = Math.round((activeStep.q_burner_th_kw || 0) * 1000);
+  const hot_water_rate_lh = activeStep.v_hot_water_l ? ((activeStep.v_hot_water_l / dt_h)).toFixed(1) : '0.0';
+  const h2_burned_rate_gh = activeStep.m_h2_burned_kg ? (((activeStep.m_h2_burned_kg * 1000) / dt_h)).toFixed(1) : '0.0';
+
+  // Fuel cell effective state
+  const isFcEffective = isFcEnabled && !isBypassActive;
+  const fcDispatchMode = params.fc_dispatch_mode || 'backup_on_low_bess';
+
   const handleUpdateParam = (key: keyof SystemParameters, value: any) => {
     if (onChangeParams) {
       onChangeParams({
@@ -179,11 +235,18 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   };
 
   return (
-    <div className="relative flex flex-col h-full w-full bg-[#070c16] text-slate-200 select-none overflow-hidden rounded border border-slate-800">
+    <div
+      ref={containerRef}
+      className={`relative flex flex-col w-full bg-[#070c16] text-slate-200 select-none overflow-hidden transition-all ${
+        isDiagramFullscreen
+          ? 'fixed inset-0 z-50 w-screen h-screen rounded-none'
+          : 'h-full rounded border border-slate-800'
+      }`}
+    >
       {/* ========================================================= */}
       {/* TOP LIVE FLOW TOOLBAR: PLAYBACK + LIVE SCALING CONTROLS    */}
       {/* ========================================================= */}
-      <div className="bg-[#0b1220] border-b border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div className="bg-[#0b1220] border-b border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs flex-shrink-0">
         {/* Playback Controls & Time Stamp */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-[#131d31] p-1 rounded border border-slate-700">
@@ -294,11 +357,11 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
         </div>
 
         {/* Live Parameter Quick-Scale Ribbon (Directly in Live Flow) */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {/* Tank Pressure Selector */}
           <div className="flex items-center gap-1 bg-[#131d31] px-2 py-0.5 rounded border border-sky-800/80 text-[11px]">
             <Gauge className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-slate-400 text-[10px] hidden sm:inline">Pressure:</span>
+            <span className="text-slate-400 text-[10px] hidden sm:inline">P:</span>
             <select
               value={params.tank_p_max_bar}
               onChange={(e) => {
@@ -313,31 +376,70 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               }}
               className="bg-[#0b1322] border border-sky-900 rounded px-1.5 py-0.5 text-[10px] text-sky-300 font-bold"
             >
-              <option value={1}>1 bar (Atmos)</option>
-              <option value={10}>10 bar (Buffer)</option>
-              <option value={30}>30 bar (PEM)</option>
-              <option value={200}>200 bar (Quad)</option>
-              <option value={350}>350 bar (Type IV)</option>
-              <option value={700}>700 bar (Mobility)</option>
+              <option value={1}>1b (Atmos)</option>
+              <option value={10}>10b (Buffer)</option>
+              <option value={30}>30b (PEM)</option>
+              <option value={200}>200b (Quad)</option>
+              <option value={350}>350b (Type IV)</option>
+              <option value={700}>700b (Mobility)</option>
             </select>
-            <span className="text-[10px] text-cyan-300 font-mono font-bold hidden xl:inline">
-              {tankVolL}L
-            </span>
           </div>
 
-          {/* Fuel Cell Toggle */}
-          <button
-            onClick={() => handleUpdateParam('fc_enabled', params.fc_enabled === false)}
-            className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono transition flex items-center gap-1 border ${
-              params.fc_enabled !== false
-                ? 'bg-purple-950/80 text-purple-300 border-purple-600'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}
-            title="Toggle PEM Fuel Cell Range-Extender Subsystem"
-          >
-            <Flame className="w-3 h-3 text-purple-400" />
-            <span>FC: {params.fc_enabled !== false ? 'ON' : 'OFF'}</span>
-          </button>
+          {/* H2 Water Heater / Thermal Bypass Selector */}
+          <div className="flex items-center gap-1 bg-[#131d31] px-2 py-0.5 rounded border border-orange-800/80 text-[11px]">
+            <Flame className="w-3.5 h-3.5 text-orange-400" />
+            <select
+              value={params.h2_burner_mode || (params.h2_burner_enabled ? 'direct_bypass' : 'disabled')}
+              onChange={(e) => {
+                const val = e.target.value as H2BurnerMode;
+                if (onChangeParams) {
+                  onChangeParams({
+                    ...params,
+                    h2_burner_enabled: val !== 'disabled',
+                    h2_burner_mode: val,
+                  });
+                }
+              }}
+              className="bg-[#0b1322] border border-orange-900 rounded px-1.5 py-0.5 text-[10px] text-orange-300 font-bold"
+              title="Configure H2 Combustion Thermal Water Heater (Direct Bypass vs Stored H2)"
+            >
+              <option value="disabled">Heater: OFF</option>
+              <option value="direct_bypass">🔥 Direct Bypass (Heat Water)</option>
+              <option value="from_storage">♨️ From Tank (Buffered)</option>
+            </select>
+          </div>
+
+          {/* Fuel Cell Toggle & Dispatch Mode Button */}
+          <div className="flex items-center bg-[#131d31] rounded border border-purple-800/80 p-0.5 text-[10px]">
+            <button
+              onClick={() => handleUpdateParam('fc_enabled', params.fc_enabled === false)}
+              className={`px-1.5 py-0.5 rounded font-bold font-mono transition flex items-center gap-1 ${
+                params.fc_enabled !== false
+                  ? 'bg-purple-950 text-purple-300'
+                  : 'text-slate-400'
+              }`}
+              title="Toggle PEM Fuel Cell Range-Extender Subsystem"
+            >
+              <Flame className="w-3 h-3 text-purple-400" />
+              <span>FC: {params.fc_enabled !== false ? 'ON' : 'OFF'}</span>
+            </button>
+            {params.fc_enabled !== false && (
+              <button
+                onClick={() => {
+                  const nextMode = params.fc_dispatch_mode === 'load_following' ? 'backup_on_low_bess' : 'load_following';
+                  handleUpdateParam('fc_dispatch_mode', nextMode);
+                }}
+                className={`ml-1 px-1.5 py-0.5 rounded font-mono font-bold transition border ${
+                  params.fc_dispatch_mode === 'load_following'
+                    ? 'bg-purple-800 text-purple-100 border-purple-400'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                }`}
+                title="Click to toggle Fuel Cell dispatch: Take Load (Load Following) vs Low-Battery Backup (25% SoC)"
+              >
+                {params.fc_dispatch_mode === 'load_following' ? 'Take Load' : 'Backup (25%)'}
+              </button>
+            )}
+          </div>
 
           {/* Tablet Zoom Controls */}
           <div className="flex items-center bg-[#131d31] rounded border border-slate-700 p-0.5 text-[11px]">
@@ -364,6 +466,20 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
             </button>
           </div>
 
+          {/* Fullscreen Toggle Feature */}
+          <button
+            onClick={toggleFullscreen}
+            className={`px-2 py-1 rounded text-[10px] font-bold font-mono transition flex items-center gap-1 border shadow ${
+              isDiagramFullscreen
+                ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-400'
+                : 'bg-cyan-800 hover:bg-cyan-700 text-cyan-100 border-cyan-600'
+            }`}
+            title={isDiagramFullscreen ? 'Exit Fullscreen (Esc)' : 'Expand to Fullscreen Live Preview'}
+          >
+            {isDiagramFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span>{isDiagramFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+          </button>
+
           {/* Hint badge: Click to edit */}
           <button
             onClick={() => setSelectedSubsystem(selectedSubsystem ? null : 'tank')}
@@ -376,7 +492,7 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
           >
             <Sliders className="w-3 h-3" />
             <span className="hidden sm:inline">
-              {selectedSubsystem ? 'Subsystem Inspector Active' : 'Click Block to Edit'}
+              {selectedSubsystem ? 'Inspector Active' : 'Edit'}
             </span>
           </button>
         </div>
@@ -385,16 +501,16 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
       {/* ========================================================= */}
       {/* MAIN SVG SCHEMATIC CANVAS STAGE (SCROLLABLE & ZOOMABLE)    */}
       {/* ========================================================= */}
-      <div className="flex-1 w-full h-full relative overflow-auto bg-[#060a12] p-2 flex items-center justify-center">
+      <div className="flex-1 w-full h-full relative overflow-auto bg-[#060a12] p-2 flex items-start justify-center pt-2 pb-6">
         <div
           style={{
             transform: `scale(${zoomLevel})`,
-            transformOrigin: 'center center',
+            transformOrigin: 'top center',
             transition: 'transform 0.12s ease-out',
             width: '100%',
             maxWidth: '1240px',
           }}
-          className="flex items-center justify-center select-none"
+          className="flex items-start justify-center select-none"
         >
           <svg
             viewBox="0 0 1200 780"
@@ -482,6 +598,17 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                 orient="auto-start-reverse"
               >
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="#3b82f6" />
+              </marker>
+              <marker
+                id="arrow-thermal-orange"
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#f97316" />
               </marker>
 
               {/* Comms Signal Marker */}
@@ -631,18 +758,72 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                   className={elecIsActive && animateFlow ? 'flow-active-fluid' : ''}
                   markerEnd="url(#arrow-fluid-cyan)"
                 />
-                {/* Hydrogen Production: Electrolyzer (x=310) -> H2 Tank (x=440) */}
-                <path
-                  d="M 310 635 L 440 635"
-                  fill="none"
-                  stroke="#06b6d4"
-                  strokeWidth="3.8"
-                  className={elecIsActive && animateFlow ? 'flow-active-fluid' : ''}
-                  markerEnd="url(#arrow-fluid-cyan)"
-                />
+                {/* Hydrogen Production Routing: 3-Way Diverter Valve */}
+                {isBypassActive ? (
+                  <>
+                    {/* Direct Bypass: Electrolyzer (x=310, y=635) -> Diverter (320, 635) -> Water Heater (x=325, y=480) */}
+                    <path
+                      d="M 310 635 L 320 635 L 320 480 L 325 480"
+                      fill="none"
+                      stroke="#f97316"
+                      strokeWidth="4"
+                      className={elecIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                      markerEnd="url(#arrow-thermal-orange)"
+                    />
+                    {/* Diverter Valve Icon */}
+                    <circle cx="320" cy="635" r="4.5" fill="#f97316" stroke="#c2410c" strokeWidth="1.5" />
+                    {/* Bypassed line to H2 Tank */}
+                    <path
+                      d="M 324 635 L 440 635"
+                      fill="none"
+                      stroke="#334155"
+                      strokeWidth="2"
+                      strokeDasharray="4 4"
+                    />
+                    <text x="380" y="625" fill="#64748b" fontSize="7.5" fontFamily="monospace" textAnchor="middle">
+                      TANK BYPASSED
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    {/* Standard or From Storage: Electrolyzer (x=310) -> H2 Tank (x=440) */}
+                    <path
+                      d="M 310 635 L 440 635"
+                      fill="none"
+                      stroke="#06b6d4"
+                      strokeWidth="3.8"
+                      className={elecIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                      markerEnd="url(#arrow-fluid-cyan)"
+                    />
+                    {/* If From Storage: H2 line from Tank (x=440) -> H2 Water Heater (x=435) */}
+                    {burnerMode === 'from_storage' && (
+                      <path
+                        d="M 440 480 L 435 480"
+                        fill="none"
+                        stroke="#f97316"
+                        strokeWidth="3.5"
+                        className={burnerIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                        markerEnd="url(#arrow-thermal-orange)"
+                      />
+                    )}
+                  </>
+                )}
+
+                {/* Hot Water Outflow from H2 Water Heater (x=380, y=522 -> y=540) */}
+                {(isBypassActive || burnerMode === 'from_storage') && (
+                  <path
+                    d="M 380 522 L 380 540"
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth="3.5"
+                    strokeDasharray={burnerIsActive ? undefined : '3 3'}
+                    className={burnerIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                    markerEnd="url(#arrow-thermal-orange)"
+                  />
+                )}
 
                 {/* Hydrogen Fuel Supply: H2 Tank (x=620) -> Regulator (x=730) -> Fuel Cell (x=800) */}
-                {isFcEnabled ? (
+                {isFcEffective ? (
                   <>
                     <path
                       d="M 620 635 L 730 635"
@@ -662,13 +843,18 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                     />
                   </>
                 ) : (
-                  <path
-                    d="M 620 635 L 800 635"
-                    fill="none"
-                    stroke="#334155"
-                    strokeWidth="2"
-                    strokeDasharray="4 4"
-                  />
+                  <>
+                    <path
+                      d="M 620 635 L 800 635"
+                      fill="none"
+                      stroke="#334155"
+                      strokeWidth="2"
+                      strokeDasharray="4 4"
+                    />
+                    <text x="710" y="625" fill="#64748b" fontSize="7.5" fontFamily="monospace" textAnchor="middle">
+                      {isBypassActive ? 'FC BYPASSED' : 'FC ISOLATED'}
+                    </text>
+                  </>
                 )}
 
                 {/* Exhaust Vapor from FC Down */}
@@ -678,7 +864,7 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                   stroke="#60a5fa"
                   strokeWidth="2.5"
                   strokeDasharray="4 3"
-                  className={fcIsActive && animateFlow ? 'flow-active-fluid' : ''}
+                  className={isFcEffective && fcIsActive && animateFlow ? 'flow-active-fluid' : ''}
                   markerEnd="url(#arrow-fluid-blue)"
                 />
 
@@ -694,8 +880,31 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                   </text>
                 </g>
 
+                {/* Hot Water Supply Badge (When Water Heater is Active or Configured) */}
+                {(isBypassActive || burnerMode === 'from_storage') && (
+                  <g
+                    transform="translate(325, 542)"
+                    className="cursor-pointer group"
+                    onClick={() => setSelectedSubsystem('burner')}
+                  >
+                    <rect width="110" height="42" rx="4" fill="#1c0f07" stroke="#f97316" strokeWidth="1.2" />
+                    <text x="55" y="11" fill="#fed7aa" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                      ♨️ HOT WATER SUPPLY
+                    </text>
+                    <text x="55" y="22" fill="#fb923c" fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                      {(q_burner_w / 1000).toFixed(2)} kW_th ({hot_water_rate_lh} L/h)
+                    </text>
+                    <text x="55" y="32" fill="#fdba74" fontSize="8" fontFamily="monospace" textAnchor="middle">
+                      {activeStep.t_water_out_c ? activeStep.t_water_out_c.toFixed(1) : (params.h2_burner_target_temp_c || 60)} °C Output
+                    </text>
+                    <text x="55" y="39" fill="#ea580c" fontSize="6.5" fontFamily="monospace" textAnchor="middle">
+                      H₂ Burn: {h2_burned_rate_gh} g/h
+                    </text>
+                  </g>
+                )}
+
                 {/* H2 Production Badge */}
-                <g transform="translate(325, 595)">
+                <g transform="translate(325, 646)">
                   <rect width="95" height="26" rx="4" fill="#0f172a" stroke="#06b6d4" strokeWidth="1" />
                   <text x="47.5" y="11" fill="#67e8f9" fontSize="8" fontFamily="monospace" textAnchor="middle">
                     H₂ GEN RATE
@@ -715,12 +924,39 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
 
                 {/* H2 Fuel Supply Badge */}
                 <g transform="translate(630, 595)">
-                  <rect width="95" height="26" rx="4" fill="#0f172a" stroke={isFcEnabled ? '#06b6d4' : '#475569'} strokeWidth="1" />
-                  <text x="47.5" y="11" fill={isFcEnabled ? '#67e8f9' : '#94a3b8'} fontSize="8" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled ? 'H₂ FUEL INLET' : 'FC ISOLATED'}
+                  <rect
+                    width="95"
+                    height="26"
+                    rx="4"
+                    fill="#0f172a"
+                    stroke={isFcEffective ? '#06b6d4' : '#475569'}
+                    strokeWidth="1"
+                    strokeDasharray={isFcEffective ? undefined : '3 2'}
+                  />
+                  <text
+                    x="47.5"
+                    y="11"
+                    fill={isFcEffective ? '#67e8f9' : '#94a3b8'}
+                    fontSize="8"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {isFcEffective ? 'H₂ FUEL INLET' : isBypassActive ? 'FC BYPASSED' : 'FC ISOLATED'}
                   </text>
-                  <text x="47.5" y="21" fill={isFcEnabled ? '#22d3ee' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled ? `${h2_cons_rate_gh} g/h @ 1.5b` : 'P2G STANDALONE'}
+                  <text
+                    x="47.5"
+                    y="21"
+                    fill={isFcEffective ? '#22d3ee' : '#64748b'}
+                    fontSize="9"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {isFcEffective
+                      ? `${h2_cons_rate_gh} g/h @ 1.5b`
+                      : isBypassActive
+                      ? 'DIRECT WATER HEAT'
+                      : 'P2G STANDALONE'}
                   </text>
                 </g>
 
@@ -728,7 +964,7 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                 <g transform="translate(825, 748)">
                   <rect width="90" height="20" rx="3" fill="#0f172a" stroke="#60a5fa" strokeWidth="0.8" />
                   <text x="45" y="13" fill="#93c5fd" fontSize="8" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled && fcIsActive ? 'H₂O Vapor Exhaust' : 'Exhaust Standby'}
+                    {isFcEffective && fcIsActive ? 'H₂O Vapor Exhaust' : 'Exhaust Standby'}
                   </text>
                 </g>
               </g>
@@ -1024,29 +1260,29 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
 
                 {/* Fuel Cell Branch Stack Side */}
                 <g transform="translate(805, 548)">
-                  <rect width="130" height="22" rx="3" fill="#0a101d" stroke={isFcEnabled ? '#a855f7' : '#475569'} strokeWidth="0.8" />
-                  <text x="65" y="10" fill={isFcEnabled ? '#e9d5ff' : '#94a3b8'} fontSize="7.5" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled ? 'FC STACK OUTPUT [DC]' : 'FC STACK [DISABLED]'}
+                  <rect width="130" height="22" rx="3" fill="#0a101d" stroke={isFcEffective ? '#a855f7' : '#475569'} strokeWidth="0.8" />
+                  <text x="65" y="10" fill={isFcEffective ? '#e9d5ff' : '#94a3b8'} fontSize="7.5" fontFamily="monospace" textAnchor="middle">
+                    {isFcEffective ? 'FC STACK OUTPUT [DC]' : isBypassActive ? 'FC STACK [BYPASSED]' : 'FC STACK [DISABLED]'}
                   </text>
-                  <text x="65" y="19" fill={isFcEnabled ? '#c084fc' : '#64748b'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled ? `28V DC | ${i_fc_stack_a}A | ${p_fc_stack_w}W` : 'ISOLATED (P2G)'}
+                  <text x="65" y="19" fill={isFcEffective ? '#c084fc' : '#64748b'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    {isFcEffective ? `28V DC | ${i_fc_stack_a}A | ${p_fc_stack_w}W` : isBypassActive ? '0V | DIRECT WATER HEAT' : 'ISOLATED (P2G)'}
                   </text>
                 </g>
 
                 {/* Fuel Cell Branch Bus Infeed */}
                 <g transform="translate(835, 415)">
-                  <rect width="130" height="42" rx="4" fill="#0c1322" stroke={isFcEnabled ? '#a855f7' : '#475569'} strokeWidth="1.2" />
-                  <text x="65" y="11" fill={isFcEnabled ? '#f3e8ff' : '#94a3b8'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                    {isFcEnabled ? 'BRANCH 5: FC [DC]' : 'BRANCH 5: DISABLED'}
+                  <rect width="130" height="42" rx="4" fill="#0c1322" stroke={isFcEffective ? '#a855f7' : '#475569'} strokeWidth="1.2" />
+                  <text x="65" y="11" fill={isFcEffective ? '#f3e8ff' : '#94a3b8'} fontSize="8" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    {isFcEffective ? `BRANCH 5: FC ${fcIsActive ? '[ONLINE]' : '[STANDBY]'}` : isBypassActive ? 'BRANCH 5: BYPASSED' : 'BRANCH 5: DISABLED'}
                   </text>
-                  <text x="65" y="22" fill={isFcEnabled ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
+                  <text x="65" y="22" fill={isFcEffective ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
                     VOLTS: {v_bus.toFixed(2)} V DC
                   </text>
-                  <text x="65" y="31" fill={isFcEnabled ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
-                    CURRENT: {isFcEnabled ? `${i_fc_a.toFixed(1)} A DC` : '0.0 A DC'}
+                  <text x="65" y="31" fill={isFcEffective ? '#e9d5ff' : '#64748b'} fontSize="9" fontFamily="monospace" textAnchor="middle">
+                    CURRENT: {isFcEffective ? `${i_fc_a.toFixed(1)} A DC` : '0.0 A DC'}
                   </text>
-                  <text x="65" y="39" fill={isFcEnabled ? '#a855f7' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                    POWER: {isFcEnabled ? `${p_fc_w} W DC` : '0 W (P2G MODE)'}
+                  <text x="65" y="39" fill={isFcEffective ? '#a855f7' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                    POWER: {isFcEffective ? `${p_fc_w} W DC` : isBypassActive ? '0 W (BYPASS HEATING)' : '0 W (P2G MODE)'}
                   </text>
                 </g>
               </g>
@@ -1465,6 +1701,52 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               </text>
             </g>
 
+            {/* NODE 7B: H2 CATALYTIC WATER HEATER / BOILER (DIRECT BYPASS & BUFFERED) */}
+            <g
+              id="node-h2-burner"
+              transform="translate(325, 430)"
+              className="cursor-pointer group"
+              onClick={() => setSelectedSubsystem(selectedSubsystem === 'burner' ? null : 'burner')}
+            >
+              <rect
+                width="110"
+                height="92"
+                rx="6"
+                fill="#160c07"
+                stroke={selectedSubsystem === 'burner' ? '#38bdf8' : burnerIsActive ? '#f97316' : '#7c2d12'}
+                strokeWidth={selectedSubsystem === 'burner' ? '2.5' : '1.5'}
+                className="transition group-hover:stroke-orange-400 shadow-lg"
+              />
+              <rect x="0" y="0" width="110" height="20" rx="6" fill={burnerIsActive ? '#c2410c' : '#7c2d12'} />
+              <text x="55" y="14" fill="#ffedd5" fontSize="8.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                H₂ WATER HEATER
+              </text>
+              <Flame className={burnerIsActive ? 'text-orange-400' : 'text-stone-500'} x="6" y="24" width="13" height="13" />
+              <text
+                x="22"
+                y="34"
+                fill={burnerIsActive ? '#fed7aa' : '#a8a29e'}
+                fontSize="8"
+                fontWeight="bold"
+                fontFamily="monospace"
+              >
+                {isBypassActive ? '🔥 DIRECT BYPASS' : burnerMode === 'from_storage' ? '♨️ FROM TANK' : 'HEATER: OFF'}
+              </text>
+              <text x="8" y="48" fill="#fdba74" fontSize="8" fontWeight="bold" fontFamily="monospace">
+                Q_th: {(q_burner_w / 1000).toFixed(2)} kW_th
+              </text>
+              <text x="8" y="60" fill="#fed7aa" fontSize="8" fontFamily="monospace">
+                Water: {hot_water_rate_lh} L/h
+              </text>
+              <text x="8" y="71" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+                T_out: {activeStep.t_water_out_c ? activeStep.t_water_out_c.toFixed(1) : (params.h2_burner_target_temp_c || 60)} °C
+              </text>
+              <rect x="6" y="76" width="98" height="12" rx="2" fill="#431407" />
+              <text x="55" y="85" fill="#fb923c" fontSize="7" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                CLICK TO CONFIGURE
+              </text>
+            </g>
+
             {/* NODE 8: MAIN HYDROGEN STORAGE TANK (PRESSURE ADJUSTABLE) */}
             <g
               id="node-h2-tank"
@@ -1590,71 +1872,87 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                 height="120"
                 rx="6"
                 fill="#0f172a"
-                stroke={isFcEnabled ? (selectedSubsystem === 'fc' ? '#38bdf8' : '#a855f7') : '#475569'}
+                stroke={isFcEffective ? (selectedSubsystem === 'fc' ? '#38bdf8' : '#a855f7') : '#475569'}
                 strokeWidth={selectedSubsystem === 'fc' ? '2.5' : '1.8'}
-                strokeDasharray={isFcEnabled ? undefined : '4 4'}
+                strokeDasharray={isFcEffective ? undefined : '4 4'}
                 className="transition group-hover:stroke-purple-300"
               />
-              <rect x="0" y="0" width="140" height="24" rx="6" fill={isFcEnabled ? '#3b0764' : '#1e293b'} />
+              <rect x="0" y="0" width="140" height="24" rx="6" fill={isFcEffective ? '#3b0764' : '#1e293b'} />
               <text
                 x="70"
                 y="16"
-                fill={isFcEnabled ? '#e9d5ff' : '#94a3b8'}
+                fill={isFcEffective ? '#e9d5ff' : '#94a3b8'}
                 fontSize="9.5"
                 fontWeight="bold"
                 fontFamily="monospace"
                 textAnchor="middle"
               >
-                {isFcEnabled ? 'PEM FUEL CELL' : 'FC (OPTIONAL: OFF)'}
+                {isFcEffective ? 'PEM FUEL CELL' : isBypassActive ? 'FC (BYPASSED)' : 'FC (OPTIONAL: OFF)'}
               </text>
-              <Activity className={isFcEnabled ? 'text-purple-400' : 'text-slate-500'} x="10" y="32" width="16" height="16" />
-              <text x="30" y="44" fill={isFcEnabled ? '#f3e8ff' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace">
+              <Activity className={isFcEffective ? 'text-purple-400' : 'text-slate-500'} x="10" y="32" width="16" height="16" />
+              <text x="30" y="44" fill={isFcEffective ? '#f3e8ff' : '#64748b'} fontSize="9" fontWeight="bold" fontFamily="monospace">
                 {isFcEnabled ? `Rating: ${params.fc_rated_kw.toFixed(1)} kW` : 'NOT INSTALLED'}
               </text>
               <text x="10" y="66" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
-                Opt Set: {isFcEnabled ? `${params.fc_opt_setpoint_kw.toFixed(1)} kW` : 'N/A (P2G)'}
+                Dispatch: {isFcEffective ? (fcDispatchMode === 'load_following' ? 'Load Follow' : `Backup (≤${(params.soc_fc_trigger_on * 100).toFixed(0)}%)`) : 'N/A'}
               </text>
               <text x="10" y="82" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
                 Eff: {(params.eta_fc_stack * 100).toFixed(0)}%
               </text>
-              <rect x="8" y="98" width="124" height="14" rx="2" fill={isFcEnabled ? '#3b0764' : '#1e293b'} />
+              <rect x="8" y="98" width="124" height="14" rx="2" fill={isFcEffective ? '#3b0764' : '#1e293b'} />
               <text
                 x="70"
                 y="108"
-                fill={isFcEnabled ? (fcIsActive ? '#d8b4fe' : '#64748b') : '#94a3b8'}
-                fontSize="7.5"
+                fill={isFcEffective ? (fcIsActive ? '#d8b4fe' : '#94a3b8') : '#64748b'}
+                fontSize="7"
                 fontWeight="bold"
                 fontFamily="monospace"
                 textAnchor="middle"
               >
-                {isFcEnabled ? (fcIsActive ? 'ACTIVE BACKUP' : 'LATCH OFF') : 'CLICK TO ENABLE FC'}
+                {!isFcEnabled
+                  ? 'CLICK TO ENABLE FC'
+                  : isBypassActive
+                  ? 'BYPASSED (DIRECT H₂ HEAT)'
+                  : fcIsActive
+                  ? `ACTIVE (${p_fc_w}W ${fcDispatchMode === 'load_following' ? 'LOAD' : 'BACKUP'})`
+                  : activeStep.p_pv_bus_kw >= activeStep.p_load_bus_kw
+                  ? 'STANDBY (SOLAR COVERS LOAD)'
+                  : activeStep.m_h2_tank_kg <= params.h2_min_reserve_kg
+                  ? 'STANDBY (H₂ RESERVE LOW)'
+                  : fcDispatchMode === 'backup_on_low_bess'
+                  ? `STANDBY (SoC ${(activeStep.soc * 100).toFixed(0)}% > ${(params.soc_fc_trigger_on * 100).toFixed(0)}%)`
+                  : 'STANDBY (DISPATCH OFF)'}
               </text>
             </g>
 
             {/* Diagram Legend (Cleanly in bottom right, without overlapping anything) */}
-            <g id="diagram-legend" transform="translate(970, 655)">
-              <rect width="220" height="110" rx="5" fill="#0c1322" stroke="#334155" strokeWidth="1" />
+            <g id="diagram-legend" transform="translate(970, 640)">
+              <rect width="220" height="125" rx="5" fill="#0c1322" stroke="#334155" strokeWidth="1" />
               <text x="10" y="16" fill="#94a3b8" fontSize="8.5" fontWeight="bold" fontFamily="monospace">
                 NOTATION & FLOW LEGEND:
               </text>
-              <circle cx="18" cy="30" r="3.5" fill="#f59e0b" />
-              <text x="28" y="33" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+              <circle cx="18" cy="29" r="3.5" fill="#f59e0b" />
+              <text x="28" y="32" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
                 DC Power Lines (V, A, W with Direction)
               </text>
-              <circle cx="18" cy="46" r="3.5" fill="#06b6d4" />
-              <text x="28" y="49" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+              <circle cx="18" cy="43" r="3.5" fill="#06b6d4" />
+              <text x="28" y="46" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
                 Hydrogen Gas (H₂ g/h @ Pressure)
               </text>
-              <circle cx="18" cy="62" r="3.5" fill="#3b82f6" />
-              <text x="28" y="65" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+              <circle cx="18" cy="57" r="3.5" fill="#f97316" />
+              <text x="28" y="60" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+                H₂ Thermal Heat & Hot Water (L/h @ °C)
+              </text>
+              <circle cx="18" cy="71" r="3.5" fill="#3b82f6" />
+              <text x="28" y="74" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
                 DI Water (H₂O L/h) & O₂ Vent
               </text>
-              <line x1="14" y1="78" x2="24" y2="78" stroke="#c084fc" strokeWidth="2" strokeDasharray="2 2" />
-              <text x="28" y="81" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
+              <line x1="14" y1="85" x2="24" y2="85" stroke="#c084fc" strokeWidth="2" strokeDasharray="2 2" />
+              <text x="28" y="88" fill="#cbd5e1" fontSize="7.5" fontFamily="monospace">
                 Supervisory DAQ (CAN / Modbus)
               </text>
-              <rect x="8" y="90" width="204" height="14" rx="2" fill="#1e293b" />
-              <text x="110" y="100" fill="#38bdf8" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+              <rect x="8" y="98" width="204" height="18" rx="2" fill="#1e293b" />
+              <text x="110" y="110" fill="#38bdf8" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
                 💡 CLICK ANY BLOCK TO EDIT
               </text>
             </g>

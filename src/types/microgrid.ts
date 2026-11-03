@@ -46,12 +46,24 @@ export interface SystemParameters {
   lhv_h2_kwh_per_kg: number;  // Lower Heating Value of H2 (33.33 kWh/kg)
   eta_fc_stack: number;       // PEM Fuel cell stack efficiency (default 0.52)
   eta_fc_dcdc: number;        // Unidirectional Step-Up Boost DC-DC converter efficiency (default 0.95)
+  fc_dispatch_mode?: FcDispatchMode; // Dispatch philosophy for Fuel Cell (default 'backup_on_low_bess')
 
   // 6. Control State-Machine Thresholds
   soc_fc_trigger_on: number;  // SoC threshold to latch Fuel Cell ON (default 0.25)
   soc_fc_trigger_off: number; // SoC threshold to unlatch Fuel Cell OFF (default 0.35)
   soc_absorption_taper: number; // SoC above which BESS charge power linearly tapers (default 0.90)
+
+  // 7. Thermal Hydrogen Water Heater / Catalytic Boiler (Direct Bypass or Stored H2)
+  h2_burner_enabled?: boolean;       // Whether thermal H2 water heater is active (default false)
+  h2_burner_mode?: H2BurnerMode;     // 'disabled' | 'direct_bypass' | 'from_storage'
+  h2_burner_eta?: number;            // Boiler thermal efficiency (default 0.90)
+  h2_burner_target_temp_c?: number;  // Target hot water delivery temp (default 60°C)
+  h2_burner_inlet_temp_c?: number;   // Cold water supply temp (default 15°C)
+  h2_burner_demand_th_kw?: number;   // Thermal demand for 'from_storage' mode (default 2.0 kW_th)
 }
+
+export type FcDispatchMode = 'backup_on_low_bess' | 'load_following' | 'night_continuous';
+export type H2BurnerMode = 'disabled' | 'direct_bypass' | 'from_storage';
 
 export type DispatchState = 1 | 2 | 3 | 4;
 // 1 = BESS Priority Charging
@@ -96,6 +108,13 @@ export interface TimeSeriesOutputStep extends TimeSeriesInputStep {
   // PEM Fuel Cell Branch
   p_fc_bus_kw: number;    // Power injected into 48V bus
   m_h2_cons_kg: number;   // H2 mass consumed in this dt
+
+  // Thermal Hydrogen Water Heater / Catalytic Boiler Branch
+  q_burner_th_kw: number;       // Thermal heat delivered to water [kW_th]
+  m_h2_burned_kg: number;       // H2 mass combusted [kg]
+  v_hot_water_l: number;        // Hot water produced in this dt [L]
+  t_water_out_c: number;        // Hot water temperature [°C]
+  h2_burner_active: boolean;    // Whether thermal boiler is currently operating
 
   // Hydrogen Storage Tank
   m_h2_tank_kg: number;   // Cumulative stored H2 mass in pressurized cylinder
@@ -167,6 +186,13 @@ export interface SimulationSummary {
 
   // Fuel Cell System Status
   fc_enabled: boolean;
+  fc_dispatch_mode: FcDispatchMode;
+
+  // Thermal Water Heater / Burner Audit
+  h2_burner_mode: H2BurnerMode;
+  total_thermal_energy_kwh: number;
+  total_h2_burned_kg: number;
+  total_hot_water_produced_l: number;
 
   total_di_water_consumed_l: number;
   total_o2_produced_nm3: number;

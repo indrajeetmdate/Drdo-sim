@@ -65,6 +65,10 @@ export default function App() {
   // Mobile drawer state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
+  // Live Flow Fullscreen and Layout States
+  const [isLiveFlowFullscreen, setIsLiveFlowFullscreen] = useState<boolean>(false);
+  const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+
   // Modals State
   const [isAutoSizingOpen, setIsAutoSizingOpen] = useState<boolean>(false);
   const [diagramModal, setDiagramModal] = useState<{
@@ -351,15 +355,8 @@ export default function App() {
                   onSelectStepIndex={handleSelectStepIndex}
                   onChangeParams={setParams}
                   onScaleLoad={handleScaleLoad}
-                  onToggleFullscreen={() =>
-                    setDiagramModal({
-                      isOpen: true,
-                      imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-                      title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
-                      description:
-                        'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
-                    })
-                  }
+                  isFullscreen={isLiveFlowFullscreen}
+                  onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
                 />
               </div>
             ) : mainViewMode === 'plots' ? (
@@ -382,6 +379,8 @@ export default function App() {
                     onSelectStepIndex={handleSelectStepIndex}
                     onChangeParams={setParams}
                     onScaleLoad={handleScaleLoad}
+                    isFullscreen={isLiveFlowFullscreen}
+                    onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
                   />
                 </div>
                 <div className="flex-1 min-h-[380px] h-full flex flex-col">
@@ -396,23 +395,36 @@ export default function App() {
           </div>
 
           {/* Bottom Tabbed Inspector (Data Table, Custom CSV, BoM, Architecture, Benchmark) */}
-          <BottomInspectorTabs
-            data={outputSteps}
-            params={params}
-            summary={summary}
-            onLoadCustomDataset={handleLoadCustomDataset}
-            activeStep={activeStep}
-            onSelectStepIndex={handleSelectStepIndex}
-            onOpenDiagramModal={() =>
-              setDiagramModal({
-                isOpen: true,
-                imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-                title: 'Hybrid DC Microgrid Single-Line Diagram & Instrumentation',
-                description:
-                  'Five branches governed by central DAQ supervisory controller and switchgear protection.',
-              })
-            }
-          />
+          <div className="flex flex-col border-t border-slate-800 bg-[#090d16] flex-shrink-0">
+            <div className="flex items-center justify-between px-3 py-1 bg-[#0b1220] border-b border-slate-800 text-[11px] text-slate-400">
+              <span className="font-semibold text-slate-300">Inspector & Telemetry Logs</span>
+              <button
+                onClick={() => setIsBottomCollapsed(!isBottomCollapsed)}
+                className="text-cyan-400 hover:text-cyan-300 font-mono text-[10px] flex items-center gap-1 bg-[#131d31] px-2 py-0.5 rounded border border-slate-700"
+              >
+                <span>{isBottomCollapsed ? '▲ Expand Logs' : '▼ Collapse Logs (Max Live View)'}</span>
+              </button>
+            </div>
+            {!isBottomCollapsed && (
+              <BottomInspectorTabs
+                data={outputSteps}
+                params={params}
+                summary={summary}
+                onLoadCustomDataset={handleLoadCustomDataset}
+                activeStep={activeStep}
+                onSelectStepIndex={handleSelectStepIndex}
+                onOpenDiagramModal={() =>
+                  setDiagramModal({
+                    isOpen: true,
+                    imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
+                    title: 'Hybrid DC Microgrid Single-Line Diagram & Instrumentation',
+                    description:
+                      'Five branches governed by central DAQ supervisory controller and switchgear protection.',
+                  })
+                }
+              />
+            )}
+          </div>
         </main>
       </div>
 
