@@ -231,7 +231,12 @@ export function parseCsvFile(
     return emptyFailure('CSV file is completely empty.');
   }
 
-  const lines = csvText.split(/\r?\n/).filter((l) => {
+  const normalizedText = csvText.replace(/^\uFEFF/, '');
+  if (/[\x00-\x08\x0E-\x1F]/.test(normalizedText.slice(0, 512)) || normalizedText.startsWith('PK\x03\x04')) {
+    return emptyFailure('Selected file appears to be binary (e.g. Excel .xlsx/.xls). Please export or save as plain UTF-8 .csv.');
+  }
+
+  const lines = normalizedText.split(/\r?\n/).filter((l) => {
     const t = l.trim();
     return t.length > 0 && !t.startsWith('#');
   });
@@ -245,16 +250,24 @@ export function parseCsvFile(
   const semiCount = (sampleLine.match(/;/g) || []).length;
   const commaCount = (sampleLine.match(/,/g) || []).length;
   const tabCount = (sampleLine.match(/\t/g) || []).length;
-  if (semiCount > commaCount && semiCount >= tabCount) {
-    delimiter = ';';
-  } else if (tabCount > commaCount && tabCount > semiCount) {
+  const hasEuroSemiDecimals = semiCount > 0 && /(?:^|;)\s*-?\d+,\d+(?:\s*;|\s*$)/.test(sampleLine);
+  if (tabCount > commaCount && tabCount >= semiCount) {
     delimiter = '\t';
+  } else if (semiCount > 0 && (semiCount > commaCount || hasEuroSemiDecimals)) {
+    delimiter = ';';
   }
 
-  const firstRowCells = splitCsvLine(lines[0], delimiter);
+  const rawFirstRowCells = splitCsvLine(lines[0], delimiter);
+  // Drop trailing empty cell caused by trailing commas like "0,0.42,"
+  const firstRowCells = [...rawFirstRowCells];
+  while (firstRowCells.length > 2 && firstRowCells[firstRowCells.length - 1] === '') {
+    firstRowCells.pop();
+  }
+  const normalizeNumStr = (s: string) =>
+    delimiter === ';' && !s.includes('.') ? s.replace(',', '.') : s;
   const isHeaderlessNumeric =
     firstRowCells.length >= 2 &&
-    firstRowCells.every((c) => /^-?\d+(?:\.\d+)?$/.test(c.trim()));
+    firstRowCells.every((c) => /^-?\d+(?:\.\d+)?$/.test(normalizeNumStr(c.trim())));
 
   let headers: string[];
   let dataStartLine = 1;
@@ -308,6 +321,12 @@ export function parseCsvFile(
       findCol(['wind', 'v_wind', 'speed', 'm/s']),
   };
 
+  if (!mapping.timestampCol && headers.length >= 2) {
+    const candidateIdx = headers[0] === mapping.loadCol ? 1 : 0;
+    mapping.timestampCol = headers[candidateIdx];
+    warnings.push(`Time column not explicitly named — using "${headers[candidateIdx]}".`);
+  }
+
   if (!mapping.loadCol) {
     if (headers.length >= 2) {
       const fallbackIdx = headers[0] === mapping.timestampCol ? 1 : 0;
@@ -321,12 +340,6 @@ export function parseCsvFile(
         delimiter
       );
     }
-  }
-
-  if (!mapping.timestampCol && headers.length >= 2) {
-    const candidateIdx = headers[0] === mapping.loadCol ? 1 : 0;
-    mapping.timestampCol = headers[candidateIdx];
-    warnings.push(`Time column not explicitly named — using "${headers[candidateIdx]}".`);
   }
 
   const headerInferredUnit = detectPowerUnitFromHeader(mapping.loadCol);
@@ -361,7 +374,7 @@ export function parseCsvFile(
     }
 
     const rowIdx = rawPoints.length;
-    const rawLoadVal = parseFloat(rawCols[loadIdx]);
+    const rawLoadVal = parseFloat(normalizeNumStr(rawCols[loadIdx] ?? ''));
     if (isNaN(rawLoadVal)) {
       continue;
     }
@@ -374,7 +387,7 @@ export function parseCsvFile(
 
     if (timeIdx !== -1 && rawCols[timeIdx] !== undefined && rawCols[timeIdx] !== '') {
       rawTimeStr = rawCols[timeIdx];
-      const parsedTime = parseTimeValue(rawTimeStr, baseDateMs);
+      const parsedTime = parseTimeValue(normalizeNumStr(rawTimeStr), baseDateMs);
       if (parsedTime.kind === 'hours') {
         continuousHour = parsedTime.hoursValue;
         hourOfDay = ((continuousHour % 24) + 24) % 24;

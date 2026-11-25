@@ -24,6 +24,7 @@ interface Props {
   inputs: TimeSeriesInputStep[];
   currentParams: SystemParameters;
   onApplyRecommendation: (rec: SizingRecommendation) => void;
+  fullPage?: boolean;
 }
 
 export const AutoSizingModal: React.FC<Props> = ({
@@ -32,6 +33,7 @@ export const AutoSizingModal: React.FC<Props> = ({
   inputs,
   currentParams,
   onApplyRecommendation,
+  fullPage = false,
 }) => {
   const [targets, setTargets] = useState<AutoSizingTargets>({
     target_full_charge_hour: 12.5, // 12:30 PM
@@ -46,7 +48,7 @@ export const AutoSizingModal: React.FC<Props> = ({
     return solveMicrogridComponentSizes(inputs, targets, currentParams);
   });
 
-  if (!isOpen) return null;
+  if (!isOpen && !fullPage) return null;
 
   const handleRecompute = () => {
     const rec = solveMicrogridComponentSizes(inputs, targets, currentParams);
@@ -61,8 +63,20 @@ export const AutoSizingModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-[#0e1626] border border-cyan-500/40 rounded-lg w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-200">
+    <div
+      className={
+        fullPage
+          ? 'flex-1 h-full w-full bg-[#080d17] p-3 sm:p-5 overflow-y-auto'
+          : 'fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto'
+      }
+    >
+      <div
+        className={
+          fullPage
+            ? 'bg-[#0e1626] border border-cyan-500/30 rounded-lg w-full max-w-5xl mx-auto shadow-xl flex flex-col overflow-hidden text-slate-200'
+            : 'bg-[#0e1626] border border-cyan-500/40 rounded-lg w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-200'
+        }
+      >
         {/* Modal Header */}
         <div className="px-5 py-3.5 bg-[#0a0f1b] border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -78,12 +92,14 @@ export const AutoSizingModal: React.FC<Props> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-100 p-1.5 hover:bg-slate-800 rounded transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!fullPage && (
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-100 p-1.5 hover:bg-slate-800 rounded transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}
@@ -339,12 +355,14 @@ export const AutoSizingModal: React.FC<Props> = ({
             <span>Clicking apply will update system parameters and instantly re-run the simulation</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 bg-[#141d2e] hover:bg-[#1a263d] text-slate-300 rounded border border-slate-700 transition"
-            >
-              Cancel
-            </button>
+            {!fullPage && (
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 bg-[#141d2e] hover:bg-[#1a263d] text-slate-300 rounded border border-slate-700 transition"
+              >
+                Cancel
+              </button>
+            )}
             <button
               onClick={handleApply}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded shadow transition"

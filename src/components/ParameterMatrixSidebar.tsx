@@ -37,6 +37,7 @@ interface Props {
   importedProfiles?: ImportedLoadProfile[];
   onSelectImportedProfile?: (profileId: string) => void;
   onOpenCsvImporter?: () => void;
+  fullPage?: boolean;
 }
 
 export const ParameterMatrixSidebar: React.FC<Props> = ({
@@ -56,6 +57,7 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
   importedProfiles = [],
   onSelectImportedProfile,
   onOpenCsvImporter,
+  fullPage = false,
 }) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     solar: false,
@@ -84,35 +86,49 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
   };
 
   return (
-    <aside className="w-full lg:w-80 flex-shrink-0 bg-[#0e1626] border-r border-slate-800 flex flex-col h-full text-slate-200 overflow-hidden">
+    <aside
+      className={`${
+        fullPage
+          ? 'w-full flex-1 bg-[#0b101c]'
+          : 'w-full lg:w-80 flex-shrink-0 bg-[#0e1626] border-r border-slate-800'
+      } flex flex-col h-full text-slate-200 overflow-hidden`}
+    >
       {/* Sidebar Header & Scenario Selector */}
-      <div className="p-3 bg-[#0a0f1b] border-b border-slate-800 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
-              Parameter Matrix
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onResetDefaults}
-              title="Reset to engineering defaults"
-              className="text-slate-400 hover:text-slate-200 p-1 hover:bg-slate-800 rounded transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-            {onCloseMobile && (
+      <div
+        className={`${
+          fullPage
+            ? 'p-3 sm:px-5 sm:py-3.5 bg-[#0a0f1b] border-b border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 items-end'
+            : 'p-3 bg-[#0a0f1b] border-b border-slate-800 space-y-2.5'
+        }`}
+      >
+        {!fullPage && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
+                Parameter Matrix
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
               <button
-                onClick={onCloseMobile}
-                title="Close Sidebar"
-                className="lg:hidden text-slate-400 hover:text-slate-100 p-1 hover:bg-slate-800 rounded transition font-bold text-xs"
+                onClick={onResetDefaults}
+                title="Reset to engineering defaults"
+                className="text-slate-400 hover:text-slate-200 p-1 hover:bg-slate-800 rounded transition"
               >
-                ✕
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
-            )}
+              {onCloseMobile && (
+                <button
+                  onClick={onCloseMobile}
+                  title="Close Sidebar"
+                  className="lg:hidden text-slate-400 hover:text-slate-100 p-1 hover:bg-slate-800 rounded transition font-bold text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Preset & Imported CSV Load Profile Selector */}
         <div className="space-y-1.5">
@@ -231,7 +247,7 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="grid grid-cols-2 gap-2 pt-0.5">
+        <div className={`grid ${fullPage ? 'grid-cols-3' : 'grid-cols-2'} gap-2 pt-0.5`}>
           <button
             onClick={onOpenAutoSizer}
             className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs py-1.5 px-2 rounded shadow transition"
@@ -246,11 +262,27 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
             <Cpu className="w-3.5 h-3.5 text-amber-400" />
             <span>SLD Circuit</span>
           </button>
+          {fullPage && (
+            <button
+              onClick={onResetDefaults}
+              className="flex items-center justify-center gap-1.5 bg-[#1b263b] hover:bg-rose-950/60 text-slate-300 hover:text-rose-200 font-semibold text-xs py-1.5 px-2 rounded border border-slate-700 transition"
+              title="Reset to engineering defaults"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Scrollable Parameter Inputs */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 font-mono text-xs custom-scrollbar">
+      <div
+        className={`flex-1 overflow-y-auto font-mono text-xs custom-scrollbar ${
+          fullPage
+            ? 'p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start content-start'
+            : 'p-3 space-y-3'
+        }`}
+      >
         {/* Branch 1: Weather & Solar PV Array */}
         <div className="border border-slate-800 rounded bg-[#0b101c] overflow-hidden">
           <button

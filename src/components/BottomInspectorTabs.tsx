@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TimeSeriesOutputStep,
   SystemParameters,
@@ -32,8 +32,7 @@ interface Props {
   activeProfileName?: string;
   importedProfiles?: ImportedLoadProfile[];
   onSelectImportedProfile?: (profileId: string) => void;
-  requestedTab?: 'table' | 'csv' | 'bom' | 'diagram' | 'benchmark' | null;
-  onClearRequestedTab?: () => void;
+  fullPage?: boolean;
 }
 
 export const BottomInspectorTabs: React.FC<Props> = ({
@@ -47,18 +46,10 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   activeProfileName,
   importedProfiles = [],
   onSelectImportedProfile,
-  requestedTab,
-  onClearRequestedTab,
+  fullPage = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('table');
   const [diagramSubView, setDiagramSubView] = useState<'interactive' | 'schematic'>('interactive');
-
-  useEffect(() => {
-    if (requestedTab) {
-      setActiveTab(requestedTab);
-      if (onClearRequestedTab) onClearRequestedTab();
-    }
-  }, [requestedTab, onClearRequestedTab]);
 
   // Tab A: Table search & pagination state
   const [tableSearch, setTableSearch] = useState('');
@@ -189,9 +180,13 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-[360px] lg:h-80 flex flex-col bg-[#0a0f1b] border-t border-slate-800 text-slate-300 font-mono text-xs">
+    <div
+      className={`flex flex-col bg-[#0a0f1b] text-slate-300 font-mono text-xs ${
+        fullPage ? 'flex-1 h-full overflow-hidden' : 'min-h-[360px] lg:h-80 border-t border-slate-800'
+      }`}
+    >
       {/* Tab Navigation Header */}
-      <div className="flex items-center justify-between bg-[#0e1626] border-b border-slate-800 px-3 sm:px-4 py-1.5 overflow-x-auto whitespace-nowrap">
+      <div className="flex items-center justify-between bg-[#0e1626] border-b border-slate-800 px-3 sm:px-4 py-2 overflow-x-auto whitespace-nowrap flex-shrink-0">
         <div className="flex items-center gap-1.5 flex-nowrap">
           <button
             onClick={() => setActiveTab('diagram')}
@@ -447,7 +442,6 @@ export const BottomInspectorTabs: React.FC<Props> = ({
             importedProfiles={importedProfiles}
             onApplyProfile={(steps, name, dt) => {
               onLoadCustomDataset(steps, name, dt);
-              setActiveTab('table');
             }}
             onSelectExistingProfile={onSelectImportedProfile}
           />

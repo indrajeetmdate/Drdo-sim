@@ -31,6 +31,7 @@ import {
   RotateCcw,
   Sliders,
   Sun,
+  UploadCloud,
   Wind,
   Zap,
   ZoomIn,
@@ -63,6 +64,7 @@ interface Props {
   onScaleLoad?: (multiplier: number) => void;
   onLoadCustomDataset?: (steps: TimeSeriesInputStep[], name: string, dtHours?: number) => void;
   onSelectImportedProfile?: (profileId: string) => void;
+  onOpenCsvImporter?: () => void;
 }
 
 export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
@@ -79,6 +81,7 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   onScaleLoad,
   onLoadCustomDataset,
   onSelectImportedProfile,
+  onOpenCsvImporter,
 }) => {
   // Layer visibility toggles
   const [showPowerFlow, setShowPowerFlow] = useState<boolean>(true);
@@ -478,6 +481,19 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Import CSV Load Profile Action */}
+          {onOpenCsvImporter && (
+            <button
+              type="button"
+              onClick={onOpenCsvImporter}
+              className="px-2 py-1 rounded text-[10px] font-bold font-mono transition flex items-center gap-1 border shadow bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white border-emerald-500/80 active:scale-95"
+              title="Import daily load profile CSV (active power vs time in hours)"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Import Load CSV</span>
+            </button>
+          )}
 
           {/* Fullscreen Toggle Feature */}
           <button
@@ -1567,10 +1583,20 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
               <text x="10" y="98" fill="#94a3b8" fontSize="8.5" fontFamily="monospace">
                 Unserved: {Math.round(activeStep.p_unserved_kw * 1000)} W
               </text>
-              <rect x="8" y="118" width="114" height="14" rx="2" fill="#4c0519" />
-              <text x="65" y="128" fill="#fda4af" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                SCALE / IMPORT CSV
-              </text>
+              <g
+                className="cursor-pointer"
+                onClick={(e) => {
+                  if (onOpenCsvImporter) {
+                    e.stopPropagation();
+                    onOpenCsvImporter();
+                  }
+                }}
+              >
+                <rect x="8" y="118" width="114" height="14" rx="2" fill="#4c0519" className="hover:fill-rose-900 transition" />
+                <text x="65" y="128" fill="#fda4af" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                  SCALE / IMPORT CSV
+                </text>
+              </g>
             </g>
 
             {/* NODE 5: CENTRAL INDUSTRIAL DAQ CONTROLLER */}

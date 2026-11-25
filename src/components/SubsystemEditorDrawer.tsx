@@ -100,7 +100,7 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
   const currentZ = 1.0 + 0.0006 * params.tank_p_max_bar;
 
   return (
-    <div className="absolute inset-y-0 right-0 z-40 w-full sm:w-96 max-w-[95vw] bg-[#0c1424]/95 backdrop-blur-md border-l border-cyan-500/40 shadow-2xl flex flex-col font-mono text-xs text-slate-200 transition-all duration-200 ease-in-out">
+    <div className="absolute inset-y-0 right-0 z-40 w-full sm:w-96 max-w-[95vw] bg-[#0c1424]/95 backdrop-blur-md border-l border-cyan-500/40 shadow-2xl flex flex-col font-mono text-xs text-slate-200 select-text transition-all duration-200 ease-in-out">
       {/* Drawer Header */}
       <div className="px-4 py-3 bg-[#080e1a] border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">

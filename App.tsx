@@ -20,23 +20,22 @@ import { InteractiveSystemFlowDiagram } from './src/components/InteractiveSystem
 import { BottomInspectorTabs } from './src/components/BottomInspectorTabs';
 import { AutoSizingModal } from './src/components/AutoSizingModal';
 import { SystemDiagramModal } from './src/components/SystemDiagramModal';
+import { CsvLoadProfileImporter } from './src/components/CsvLoadProfileImporter';
 import {
   Activity,
-  Columns,
+  ArrowRight,
+  CheckCircle2,
   Cpu,
-  Download,
-  Flame,
-  Layers,
+  Gauge,
   LineChart,
-  Menu,
-  Play,
-  RotateCcw,
   Sliders,
-  Sparkles,
+  Table,
+  UploadCloud,
   Wand2,
-  X,
   Zap,
 } from 'lucide-react';
+
+type AppScreen = 'flow' | 'parameters' | 'plots' | 'inspector' | 'kpi' | 'csv' | 'autosize';
 
 export default function App() {
   // Model Parameters State
@@ -62,19 +61,13 @@ export default function App() {
   // Active Selected Step for Synchronized Scrubbing
   const [activeStep, setActiveStep] = useState<TimeSeriesOutputStep | null>(null);
 
-  // Main Stage View Mode: 'flow' (Visual Line Diagram) | 'plots' (Canvas Plots) | 'split' (Both)
-  const [mainViewMode, setMainViewMode] = useState<'flow' | 'plots' | 'split'>('flow');
+  // Dedicated Individual Screen Router State
+  const [activeScreen, setActiveScreen] = useState<AppScreen>('flow');
 
-  // Mobile drawer state
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-
-  // Live Flow Fullscreen and Layout States
+  // Live Flow Fullscreen State
   const [isLiveFlowFullscreen, setIsLiveFlowFullscreen] = useState<boolean>(false);
-  const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
-  const [requestedBottomTab, setRequestedBottomTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark' | null>(null);
 
-  // Modals State
-  const [isAutoSizingOpen, setIsAutoSizingOpen] = useState<boolean>(false);
+  // Architecture SLD Modal State
   const [diagramModal, setDiagramModal] = useState<{
     isOpen: boolean;
     imageSrc: string;
@@ -212,8 +205,7 @@ export default function App() {
   };
 
   const handleOpenCsvImporter = () => {
-    setIsBottomCollapsed(false);
-    setRequestedBottomTab('csv');
+    setActiveScreen('csv');
   };
 
   // Handle Parameter Reset
@@ -256,327 +248,445 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen lg:h-screen w-full flex flex-col bg-[#080d17] text-slate-100 font-sans overflow-x-hidden lg:overflow-hidden">
-      {/* Top Application Header Bar */}
-      <header className="min-h-11 bg-[#0a0f1b] border-b border-slate-800 px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between flex-shrink-0 gap-2">
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Mobile Sidebar Hamburger Toggle */}
-          <button
-            onClick={() => setIsMobileSidebarOpen(true)}
-            className="lg:hidden p-1.5 bg-[#141e33] hover:bg-[#1d2d4c] rounded border border-slate-700 text-slate-300 transition flex items-center gap-1 text-xs"
-            title="Open Parameters"
-          >
-            <Sliders className="w-4 h-4 text-cyan-400" />
-            <span className="text-[11px] font-mono">Params</span>
-          </button>
+  const navButtons: Array<{
+    id: AppScreen;
+    label: string;
+    icon: React.ReactNode;
+    accentClass: string;
+  }> = [
+    {
+      id: 'flow',
+      label: 'Visual Simulator',
+      icon: <Zap className="w-3.5 h-3.5 text-amber-300" />,
+      accentClass: 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-900/40',
+    },
+    {
+      id: 'parameters',
+      label: 'Parameter Matrix',
+      icon: <Sliders className="w-3.5 h-3.5 text-cyan-300" />,
+      accentClass: 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-900/40',
+    },
+    {
+      id: 'plots',
+      label: 'Engineering Plots',
+      icon: <LineChart className="w-3.5 h-3.5 text-emerald-300" />,
+      accentClass: 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-900/40',
+    },
+    {
+      id: 'inspector',
+      label: 'Inspector & Telemetry Logs',
+      icon: <Table className="w-3.5 h-3.5 text-sky-300" />,
+      accentClass: 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-900/40',
+    },
+    {
+      id: 'kpi',
+      label: 'KPI & Energy Audit',
+      icon: <Gauge className="w-3.5 h-3.5 text-purple-300" />,
+      accentClass: 'bg-cyan-600 text-white border-cyan-400 shadow-cyan-900/40',
+    },
+    {
+      id: 'csv',
+      label: 'Import Load CSV',
+      icon: <UploadCloud className="w-3.5 h-3.5 text-emerald-300" />,
+      accentClass: 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-900/40',
+    },
+    {
+      id: 'autosize',
+      label: 'Auto-Sizer',
+      icon: <Wand2 className="w-3.5 h-3.5 text-amber-200" />,
+      accentClass: 'bg-blue-600 text-white border-blue-400 shadow-blue-900/40',
+    },
+  ];
 
+  const openSldModal = () =>
+    setDiagramModal({
+      isOpen: true,
+      imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
+      title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
+      description:
+        'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
+    });
+
+  return (
+    <div className="h-screen w-full flex flex-col bg-[#080d17] text-slate-100 font-sans overflow-hidden">
+      {/* Top Application Header Bar */}
+      <header className="bg-[#0a0f1b] border-b border-slate-800 flex-shrink-0">
+        {/* Compact Brand + Live Micro-Status Strip */}
+        <div className="px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/70">
           <div className="flex items-center gap-2">
             <div className="p-1 rounded bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
               <Zap className="w-4 h-4" />
             </div>
-            <div>
-              <h1 className="text-xs font-bold font-mono tracking-wider text-slate-100 uppercase flex items-center gap-1.5">
-                <span className="truncate max-w-[200px] sm:max-w-none">
-                  Hybrid DC Microgrid & P2H2P Workbench
-                </span>
-                <span className="text-[10px] text-cyan-400 font-normal px-1.5 py-0.2 rounded bg-cyan-950/60 border border-cyan-800/40">
-                  v2.5
-                </span>
-              </h1>
+            <h1 className="text-xs font-bold font-mono tracking-wider text-slate-100 uppercase flex items-center gap-1.5">
+              <span className="truncate max-w-[200px] sm:max-w-none">
+                Hybrid DC Microgrid & P2H2P Workbench
+              </span>
+              <span className="text-[10px] text-cyan-400 font-normal px-1.5 py-0.2 rounded bg-cyan-950/60 border border-cyan-800/40">
+                v2.5
+              </span>
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+            {/* Active Preset / CSV Tag */}
+            <div className="flex items-center gap-1.5 bg-[#121929] px-2 py-0.5 rounded border border-slate-700/80">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              <span className="text-slate-300 font-semibold truncate max-w-[140px] sm:max-w-[200px]">
+                {customDatasetActive
+                  ? `CSV: ${customDatasetName}`
+                  : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name || 'Dataset'}
+              </span>
             </div>
-          </div>
 
-          <div className="hidden xl:flex items-center gap-2 text-[11px] font-mono text-slate-400 pl-2 border-l border-slate-800">
-            <span>48V DC Bus</span>
-            <span className="text-slate-600">•</span>
-            <span>16S LiFePO4</span>
-            <span className="text-slate-600">•</span>
-            <span>PEM Electrolyzer</span>
-            <span className="text-slate-600">•</span>
-            <span>PEMFC</span>
-          </div>
-        </div>
-
-        {/* Center / Right Stage View Switcher & Action Badges */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 font-mono text-xs">
-          {/* View Mode Switcher */}
-          <div className="flex items-center bg-[#101726] p-0.5 rounded border border-slate-700 text-[11px]">
-            <button
-              onClick={() => setMainViewMode('flow')}
-              className={`px-2.5 py-1 rounded transition flex items-center gap-1 font-bold ${
-                mainViewMode === 'flow'
-                  ? 'bg-cyan-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
+            {/* Scale Tag */}
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                params.scale === '1:1'
+                  ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/50'
+                  : 'bg-amber-950/80 text-amber-300 border border-amber-500/50'
               }`}
-              title="Show Visual Line Diagram with Power (V, A, W DC) & Material Flow"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span>Flow Diagram</span>
-            </button>
-
-            <button
-              onClick={() => setMainViewMode('plots')}
-              className={`px-2.5 py-1 rounded transition flex items-center gap-1 font-bold ${
-                mainViewMode === 'plots'
-                  ? 'bg-cyan-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Show 4-Track Synchronized Canvas Engineering Plots"
-            >
-              <LineChart className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Plots</span>
-            </button>
-
-            <button
-              onClick={() => setMainViewMode('split')}
-              className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded transition font-bold ${
-                mainViewMode === 'split'
-                  ? 'bg-cyan-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Show Both Flow Diagram & Synchronized Plots Stacked"
-            >
-              <Columns className="w-3.5 h-3.5 text-purple-400" />
-              <span>Split</span>
-            </button>
-          </div>
-
-          {/* Active Preset Tag */}
-          <div className="hidden sm:flex items-center gap-1.5 bg-[#121929] px-2.5 py-1 rounded border border-slate-700/80 text-[11px]">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span className="text-slate-300 font-semibold truncate max-w-[150px]">
-              {customDatasetActive
-                ? `Custom: ${customDatasetName}`
-                : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name || 'Dataset'}
+              {params.scale}
             </span>
+
+            {/* Compact Live Telemetry Pill */}
+            {activeStep && (
+              <div className="hidden md:flex items-center gap-2 bg-[#0f172a] px-2 py-0.5 rounded border border-slate-800 text-[10px] text-slate-400">
+                <span>
+                  V_bus: <strong className="text-amber-300">{activeStep.v_bus_v.toFixed(1)}V</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  SoC: <strong className="text-emerald-300">{(activeStep.soc * 100).toFixed(0)}%</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  H₂: <strong className="text-cyan-300">{activeStep.m_h2_tank_kg.toFixed(3)}kg</strong>
+                </span>
+                {summary && (
+                  <>
+                    <span>•</span>
+                    <span className={summary.energy_conservation_pass ? 'text-emerald-400' : 'text-rose-400'}>
+                      {summary.energy_conservation_pass ? 'Audit ✓' : 'Audit !'}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-
-          {/* Scale Tag */}
-          <span
-            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-              params.scale === '1:1'
-                ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/50'
-                : 'bg-amber-950/80 text-amber-300 border border-amber-500/50'
-            }`}
-          >
-            {params.scale}
-          </span>
-
-          {/* Auto-Size Action */}
-          <button
-            onClick={() => setIsAutoSizingOpen(true)}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs px-2.5 py-1 rounded shadow transition"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Auto-Size</span>
-          </button>
         </div>
+
+        {/* Dedicated Screen Switcher Button Bar */}
+        <nav
+          aria-label="Workspace Screens"
+          className="px-3 sm:px-4 py-1.5 bg-[#070b13] flex items-center gap-1.5 overflow-x-auto whitespace-nowrap font-mono text-xs"
+        >
+          {navButtons.map((btn) => {
+            const isActive = activeScreen === btn.id;
+            return (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => setActiveScreen(btn.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[11px] font-bold transition flex-shrink-0 active:scale-95 ${
+                  isActive
+                    ? `${btn.accentClass} shadow`
+                    : 'bg-[#101829] hover:bg-[#18243c] text-slate-300 hover:text-white border-slate-800'
+                }`}
+              >
+                {btn.icon}
+                <span>{btn.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
-      {/* Top KPI & Energy Audit Ribbon */}
-      <KpiAuditRibbon summary={summary} />
-
-      {/* Main Center Area: Left Sidebar (Desktop) + Main Stage + Bottom Inspector */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-        {/* Left Sidebar: Parameter Control Matrix (Desktop Docked) */}
-        <div className="hidden lg:block h-full">
-          <ParameterMatrixSidebar
-            params={params}
-            onChangeParams={setParams}
-            activePresetId={activePresetId}
-            onSelectPreset={handleSelectPreset}
-            presets={PRESET_SCENARIOS}
-            onOpenAutoSizer={() => setIsAutoSizingOpen(true)}
-            onOpenDiagram={() =>
-              setDiagramModal({
-                isOpen: true,
-                imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-                title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
-                description:
-                  'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
-              })
-            }
-            onResetDefaults={handleResetDefaults}
-            autoRecompute={autoRecompute}
-            onToggleAutoRecompute={setAutoRecompute}
-            customDatasetActive={customDatasetActive}
-            customDatasetName={customDatasetName}
-            importedProfiles={importedProfiles}
-            onSelectImportedProfile={handleSelectImportedProfile}
-            onOpenCsvImporter={handleOpenCsvImporter}
-          />
-        </div>
-
-        {/* Center Main Stage */}
-        <main className="flex-1 flex flex-col overflow-y-auto lg:overflow-hidden min-w-0">
-          {/* Main Visual Display: Based on viewMode */}
-          <div className="flex-1 flex flex-col overflow-y-auto lg:overflow-hidden min-h-[380px]">
-            {mainViewMode === 'flow' ? (
-              // 1. VISUAL LINE DIAGRAM: Dynamic Directional Flow Schematic
-              <div className="flex-1 w-full h-full min-h-[460px] p-1 bg-[#060a12] flex flex-col overflow-hidden">
-                <InteractiveSystemFlowDiagram
-                  currentStep={activeStep}
-                  allSteps={outputSteps}
-                  params={params}
-                  dtHours={summary?.dt_hours ?? datasetDtHours}
-                  activeProfileName={
-                    customDatasetActive
-                      ? customDatasetName
-                      : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name
-                  }
-                  importedProfiles={importedProfiles}
-                  onSelectStepIndex={handleSelectStepIndex}
-                  onChangeParams={setParams}
-                  onScaleLoad={handleScaleLoad}
-                  onLoadCustomDataset={handleLoadCustomDataset}
-                  onSelectImportedProfile={handleSelectImportedProfile}
-                  isFullscreen={isLiveFlowFullscreen}
-                  onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
-                />
-              </div>
-            ) : mainViewMode === 'plots' ? (
-              // 2. SYNCHRONIZED 4-TRACK PLOTS
-              <div className="flex-1 w-full h-full min-h-[420px] flex flex-col overflow-hidden">
-                <SynchronizedPlots
-                  data={outputSteps}
-                  params={params}
-                  onHoverStep={setActiveStep}
-                />
-              </div>
-            ) : (
-              // 3. SPLIT VIEW: Both Flow Diagram & Synchronized Plots
-              <div className="flex-1 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-800 overflow-y-auto lg:overflow-hidden">
-                <div className="flex-1 min-h-[380px] h-full p-1 bg-[#060a12]">
-                  <InteractiveSystemFlowDiagram
-                    currentStep={activeStep}
-                    allSteps={outputSteps}
-                    params={params}
-                    dtHours={summary?.dt_hours ?? datasetDtHours}
-                    activeProfileName={
-                      customDatasetActive
-                        ? customDatasetName
-                        : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name
-                    }
-                    importedProfiles={importedProfiles}
-                    onSelectStepIndex={handleSelectStepIndex}
-                    onChangeParams={setParams}
-                    onScaleLoad={handleScaleLoad}
-                    onLoadCustomDataset={handleLoadCustomDataset}
-                    onSelectImportedProfile={handleSelectImportedProfile}
-                    isFullscreen={isLiveFlowFullscreen}
-                    onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
-                  />
-                </div>
-                <div className="flex-1 min-h-[380px] h-full flex flex-col">
-                  <SynchronizedPlots
-                    data={outputSteps}
-                    params={params}
-                    onHoverStep={setActiveStep}
-                  />
-                </div>
-              </div>
-            )}
+      {/* Main Dedicated Single-Screen Viewport */}
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+        {activeScreen === 'flow' && (
+          <div className="flex-1 w-full h-full p-1 bg-[#060a12] flex flex-col overflow-hidden">
+            <InteractiveSystemFlowDiagram
+              currentStep={activeStep}
+              allSteps={outputSteps}
+              params={params}
+              dtHours={summary?.dt_hours ?? datasetDtHours}
+              activeProfileName={
+                customDatasetActive
+                  ? customDatasetName
+                  : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name
+              }
+              importedProfiles={importedProfiles}
+              onSelectStepIndex={handleSelectStepIndex}
+              onChangeParams={setParams}
+              onScaleLoad={handleScaleLoad}
+              onLoadCustomDataset={handleLoadCustomDataset}
+              onSelectImportedProfile={handleSelectImportedProfile}
+              onOpenCsvImporter={handleOpenCsvImporter}
+              isFullscreen={isLiveFlowFullscreen}
+              onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
+            />
           </div>
+        )}
 
-          {/* Bottom Tabbed Inspector (Data Table, Custom CSV, BoM, Architecture, Benchmark) */}
-          <div className="flex flex-col border-t border-slate-800 bg-[#090d16] flex-shrink-0">
-            <div className="flex items-center justify-between px-3 py-1 bg-[#0b1220] border-b border-slate-800 text-[11px] text-slate-400">
-              <span className="font-semibold text-slate-300">Inspector & Telemetry Logs</span>
-              <button
-                onClick={() => setIsBottomCollapsed(!isBottomCollapsed)}
-                className="text-cyan-400 hover:text-cyan-300 font-mono text-[10px] flex items-center gap-1 bg-[#131d31] px-2 py-0.5 rounded border border-slate-700"
-              >
-                <span>{isBottomCollapsed ? '▲ Expand Logs' : '▼ Collapse Logs (Max Live View)'}</span>
-              </button>
-            </div>
-            {!isBottomCollapsed && (
-              <BottomInspectorTabs
-                data={outputSteps}
-                params={params}
-                summary={summary}
-                onLoadCustomDataset={handleLoadCustomDataset}
-                activeStep={activeStep}
-                onSelectStepIndex={handleSelectStepIndex}
-                activeProfileName={customDatasetActive ? customDatasetName : undefined}
-                importedProfiles={importedProfiles}
-                onSelectImportedProfile={handleSelectImportedProfile}
-                requestedTab={requestedBottomTab}
-                onClearRequestedTab={() => setRequestedBottomTab(null)}
-                onOpenDiagramModal={() =>
-                  setDiagramModal({
-                    isOpen: true,
-                    imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-                    title: 'Hybrid DC Microgrid Single-Line Diagram & Instrumentation',
-                    description:
-                      'Five branches governed by central DAQ supervisory controller and switchgear protection.',
-                  })
-                }
-              />
-            )}
-          </div>
-        </main>
-      </div>
-
-      {/* Mobile Drawer for Parameter Matrix Sidebar */}
-      {isMobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setIsMobileSidebarOpen(false)}
-          />
-          <div className="relative w-80 max-w-[85vw] h-full bg-[#0e1626] z-10 shadow-2xl flex flex-col">
+        {activeScreen === 'parameters' && (
+          <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
             <ParameterMatrixSidebar
+              fullPage={true}
               params={params}
               onChangeParams={setParams}
               activePresetId={activePresetId}
-              onSelectPreset={(p) => {
-                handleSelectPreset(p);
-                setIsMobileSidebarOpen(false);
-              }}
+              onSelectPreset={handleSelectPreset}
               presets={PRESET_SCENARIOS}
-              onOpenAutoSizer={() => {
-                setIsAutoSizingOpen(true);
-                setIsMobileSidebarOpen(false);
-              }}
-              onOpenDiagram={() => {
-                setDiagramModal({
-                  isOpen: true,
-                  imageSrc: '/diagrams/media_1793685530871_13054513.jpg',
-                  title: 'Hybrid DC Microgrid Architecture & Single-Line Diagram',
-                  description:
-                    'Five branch common 48V DC bus microgrid with solar MPPT, BESS, PEM Electrolyzer, PEM Fuel Cell, and Programmable DC Load.',
-                });
-                setIsMobileSidebarOpen(false);
-              }}
+              onOpenAutoSizer={() => setActiveScreen('autosize')}
+              onOpenDiagram={openSldModal}
               onResetDefaults={handleResetDefaults}
               autoRecompute={autoRecompute}
               onToggleAutoRecompute={setAutoRecompute}
-              onCloseMobile={() => setIsMobileSidebarOpen(false)}
               customDatasetActive={customDatasetActive}
               customDatasetName={customDatasetName}
               importedProfiles={importedProfiles}
-              onSelectImportedProfile={(id) => {
-                handleSelectImportedProfile(id);
-                setIsMobileSidebarOpen(false);
-              }}
-              onOpenCsvImporter={() => {
-                handleOpenCsvImporter();
-                setIsMobileSidebarOpen(false);
-              }}
+              onSelectImportedProfile={handleSelectImportedProfile}
+              onOpenCsvImporter={handleOpenCsvImporter}
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Modals */}
-      <AutoSizingModal
-        isOpen={isAutoSizingOpen}
-        onClose={() => setIsAutoSizingOpen(false)}
-        inputs={inputSteps}
-        currentParams={params}
-        onApplyRecommendation={handleApplyAutoSizing}
-      />
+        {activeScreen === 'plots' && (
+          <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
+            <SynchronizedPlots
+              data={outputSteps}
+              params={params}
+              onHoverStep={setActiveStep}
+            />
+          </div>
+        )}
+
+        {activeScreen === 'inspector' && (
+          <div className="flex-1 w-full h-full flex flex-col overflow-hidden">
+            <BottomInspectorTabs
+              fullPage={true}
+              data={outputSteps}
+              params={params}
+              summary={summary}
+              onLoadCustomDataset={handleLoadCustomDataset}
+              activeStep={activeStep}
+              onSelectStepIndex={handleSelectStepIndex}
+              activeProfileName={customDatasetActive ? customDatasetName : undefined}
+              importedProfiles={importedProfiles}
+              onSelectImportedProfile={handleSelectImportedProfile}
+              onOpenDiagramModal={openSldModal}
+            />
+          </div>
+        )}
+
+        {activeScreen === 'kpi' && (
+          <div className="flex-1 w-full h-full overflow-y-auto bg-[#080d17] font-mono">
+            <KpiAuditRibbon summary={summary} />
+
+            {/* Extended Energy, Mass & Telemetry Audit Summary Screen */}
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
+                    System Energy, Mass & Solver Telemetry Breakdown
+                  </h2>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Solver Runtime: <strong className="text-cyan-300">{solverExecutionTimeMs} ms</strong>
+                </span>
+              </div>
+
+              {summary && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Electrical Conservation Card */}
+                  <div className="bg-[#0e1626] border border-slate-800 rounded-lg p-4 space-y-2">
+                    <h3 className="text-amber-300 font-bold uppercase text-[11px] tracking-wider">
+                      Electrical Bus Balance (DC)
+                    </h3>
+                    <div className="space-y-1 text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">PV Harvested:</span>
+                        <span>{summary.total_pv_gen_kwh.toFixed(2)} kWh</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Load Served:</span>
+                        <span>{(summary.total_load_demand_kwh - summary.total_unserved_kwh).toFixed(2)} kWh</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Unserved Load:</span>
+                        <span className={summary.total_unserved_kwh > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                          {summary.total_unserved_kwh.toFixed(3)} kWh
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Solar Curtailed:</span>
+                        <span className="text-amber-300">{summary.total_curtailed_kwh.toFixed(2)} kWh</span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-800 pt-1">
+                        <span className="text-slate-400">Bus Residual (ΔE):</span>
+                        <span className={summary.energy_conservation_pass ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                          {summary.energy_conservation_residual_kwh.toExponential(2)} kWh
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hydrogen Loop & Thermal Card */}
+                  <div className="bg-[#0e1626] border border-slate-800 rounded-lg p-4 space-y-2">
+                    <h3 className="text-cyan-300 font-bold uppercase text-[11px] tracking-wider">
+                      Hydrogen & Thermal Ledger
+                    </h3>
+                    <div className="space-y-1 text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Electrolyzer Input:</span>
+                        <span>{summary.elec_total_input_kwh.toFixed(2)} kWh</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">H₂ Produced:</span>
+                        <span className="text-cyan-300">{summary.total_h2_prod_kg.toFixed(4)} kg</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Fuel Cell Consumed:</span>
+                        <span>{summary.total_h2_cons_kg.toFixed(4)} kg</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Tank Volume / Class:</span>
+                        <span>{Math.round(summary.tank_volume_liters)} L @ {summary.tank_pressure_class_bar} bar</span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-800 pt-1">
+                        <span className="text-slate-400">Peak Pressure:</span>
+                        <span className="text-sky-300 font-bold">{summary.peak_tank_pressure_bar.toFixed(2)} bar</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Active Step Instantaneous Snapshot */}
+                  <div className="bg-[#0e1626] border border-slate-800 rounded-lg p-4 space-y-2">
+                    <h3 className="text-emerald-300 font-bold uppercase text-[11px] tracking-wider">
+                      Active Step Snapshot ({activeStep?.timestamp || '--'})
+                    </h3>
+                    {activeStep ? (
+                      <div className="space-y-1 text-slate-300">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Dispatch State:</span>
+                          <span className="text-cyan-300 font-bold">
+                            State {activeStep.state} (
+                            {activeStep.state === 1
+                              ? 'BESS Chg'
+                              : activeStep.state === 2
+                              ? 'H₂ Prod'
+                              : activeStep.state === 3
+                              ? 'BESS Dis'
+                              : 'FC Extender'}
+                            )
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Bus Voltage:</span>
+                          <span>{activeStep.v_bus_v.toFixed(2)} V DC</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">PV / Load:</span>
+                          <span>{activeStep.p_pv_bus_kw.toFixed(2)} / {activeStep.p_load_kw.toFixed(2)} kW</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Elec / FC Power:</span>
+                          <span>{activeStep.p_elec_bus_kw.toFixed(2)} / {activeStep.p_fc_bus_kw.toFixed(2)} kW</span>
+                        </div>
+                        <div className="flex justify-between border-t border-slate-800 pt-1">
+                          <span className="text-slate-400">KCL Current Residual:</span>
+                          <span className="text-emerald-400 font-bold">{activeStep.kcl_residual_a.toFixed(4)} A</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-500">No simulation step selected.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveScreen('flow')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-bold transition"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Open Visual Simulator</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveScreen('inspector')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#131d31] hover:bg-[#1a2742] text-slate-200 border border-slate-700 rounded font-bold transition"
+                >
+                  <Table className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Inspect Telemetry Data Table</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeScreen === 'csv' && (
+          <div className="flex-1 w-full h-full overflow-y-auto bg-[#080d17] p-3 sm:p-5 font-mono text-xs">
+            <div className="max-w-5xl mx-auto bg-[#0b101c] border border-cyan-500/30 rounded-lg shadow-xl flex flex-col overflow-hidden">
+              <div className="px-4 py-3 bg-[#070b13] border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <UploadCloud className="w-4 h-4 text-emerald-400" />
+                  <h2 className="text-sm font-bold text-cyan-300 uppercase tracking-wider">
+                    Import Daily Load Profile (CSV: Active Power vs Time in Hours)
+                  </h2>
+                </div>
+                {customDatasetActive && (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Active: {customDatasetName}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveScreen('flow')}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded text-[11px] transition"
+                    >
+                      <span>View in Visual Simulator</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 sm:p-4">
+                <CsvLoadProfileImporter
+                  variant="full"
+                  systemScale={params.scale}
+                  activeProfileName={customDatasetActive ? customDatasetName : undefined}
+                  importedProfiles={importedProfiles}
+                  onApplyProfile={(steps, name, dt) => {
+                    handleLoadCustomDataset(steps, name, dt);
+                  }}
+                  onSelectExistingProfile={(id) => {
+                    handleSelectImportedProfile(id);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeScreen === 'autosize' && (
+          <AutoSizingModal
+            fullPage={true}
+            isOpen={true}
+            onClose={() => setActiveScreen('flow')}
+            inputs={inputSteps}
+            currentParams={params}
+            onApplyRecommendation={handleApplyAutoSizing}
+          />
+        )}
+      </main>
 
       <SystemDiagramModal
         isOpen={diagramModal.isOpen}
