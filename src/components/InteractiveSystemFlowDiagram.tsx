@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  TimeSeriesInputStep,
   TimeSeriesOutputStep,
   SystemParameters,
   DispatchState,
   H2BurnerMode,
+  ImportedLoadProfile,
 } from '../types/microgrid';
 import {
   Activity,
@@ -43,6 +45,7 @@ import {
   calculateH2TankMaxCapacity,
   calculateH2TankPressure,
   calculateH2TankVolumeForMass,
+  inferDtHoursFromSteps,
   TANK_PRESSURE_PRESETS,
 } from '../simulation/simulationEngine';
 
@@ -50,22 +53,32 @@ interface Props {
   currentStep: TimeSeriesOutputStep | null;
   allSteps: TimeSeriesOutputStep[];
   params: SystemParameters;
+  dtHours?: number;
+  activeProfileName?: string;
+  importedProfiles?: ImportedLoadProfile[];
   onSelectStepIndex?: (index: number) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onChangeParams?: (params: SystemParameters) => void;
   onScaleLoad?: (multiplier: number) => void;
+  onLoadCustomDataset?: (steps: TimeSeriesInputStep[], name: string, dtHours?: number) => void;
+  onSelectImportedProfile?: (profileId: string) => void;
 }
 
 export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   currentStep,
   allSteps,
   params,
+  dtHours,
+  activeProfileName,
+  importedProfiles = [],
   onSelectStepIndex,
   isFullscreen,
   onToggleFullscreen,
   onChangeParams,
   onScaleLoad,
+  onLoadCustomDataset,
+  onSelectImportedProfile,
 }) => {
   // Layer visibility toggles
   const [showPowerFlow, setShowPowerFlow] = useState<boolean>(true);
@@ -196,8 +209,8 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
   const i_curtailed_a = activeStep.i_curtailed_a;
   const isTankFull = activeStep.p_tank_bar >= params.tank_p_max_bar;
 
-  // Material Flow variables (rates per hour, dt = 0.25h)
-  const dt_h = 0.25;
+  // Material Flow variables (rates per hour using active dataset time step dt_h)
+  const dt_h = dtHours && dtHours > 0 ? dtHours : inferDtHoursFromSteps(allSteps, 0.25);
   const h2_prod_rate_gh = ((activeStep.m_h2_prod_kg * 1000) / dt_h).toFixed(1);
   const di_water_rate_lh = (activeStep.v_di_water_l / dt_h).toFixed(2);
   const o2_vent_rate_nm3h = (activeStep.v_o2_nm3 / dt_h).toFixed(2);
@@ -1555,8 +1568,8 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                 Unserved: {Math.round(activeStep.p_unserved_kw * 1000)} W
               </text>
               <rect x="8" y="118" width="114" height="14" rx="2" fill="#4c0519" />
-              <text x="65" y="128" fill="#f43f5e" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
-                SCALE LOAD DEMAND
+              <text x="65" y="128" fill="#fda4af" fontSize="7.5" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                SCALE / IMPORT CSV
               </text>
             </g>
 
@@ -1915,9 +1928,9 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                   ? 'BYPASSED (DIRECT H₂ HEAT)'
                   : fcIsActive
                   ? `ACTIVE (${p_fc_w}W ${fcDispatchMode === 'load_following' ? 'LOAD' : 'BACKUP'})`
-                  : activeStep.p_pv_bus_kw >= activeStep.p_load_bus_kw
+                  : activeStep.p_pv_bus_kw >= activeStep.p_load_kw
                   ? 'STANDBY (SOLAR COVERS LOAD)'
-                  : activeStep.m_h2_tank_kg <= params.h2_min_reserve_kg
+                  : activeStep.m_h2_tank_kg <= params.tank_m_h2_min_kg
                   ? 'STANDBY (H₂ RESERVE LOW)'
                   : fcDispatchMode === 'backup_on_low_bess'
                   ? `STANDBY (SoC ${(activeStep.soc * 100).toFixed(0)}% > ${(params.soc_fc_trigger_on * 100).toFixed(0)}%)`
@@ -1978,7 +1991,8 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
                     }
                   });
                   if (maxPv <= 0) {
-                    bestIdx = allSteps.findIndex((s) => s.hour >= 12.0) || 48;
+                    const midIdx = allSteps.findIndex((s) => s.hour >= 12.0);
+                    bestIdx = midIdx >= 0 ? midIdx : Math.floor(allSteps.length / 2);
                   }
                   onSelectStepIndex(Math.max(0, bestIdx));
                 }
@@ -2000,7 +2014,12 @@ export const InteractiveSystemFlowDiagram: React.FC<Props> = ({
             if (onChangeParams) onChangeParams(newParams);
           }}
           currentStep={activeStep}
+          dtHours={dt_h}
+          activeProfileName={activeProfileName}
+          importedProfiles={importedProfiles}
           onScaleLoad={onScaleLoad}
+          onLoadCustomDataset={onLoadCustomDataset}
+          onSelectImportedProfile={onSelectImportedProfile}
         />
       </div>
 

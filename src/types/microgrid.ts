@@ -282,3 +282,14 @@ export interface SwitchgearItem {
   voltageDrop_percent: number;
   estimatedCostUsd: number;
 }
+
+export interface ImportedLoadProfile {
+  id: string;
+  name: string;
+  steps: TimeSeriesInputStep[];
+  dt_hours: number;
+  peak_kw: number;
+  avg_kw: number;
+  daily_kwh: number;
+  source_rows: number;
+}

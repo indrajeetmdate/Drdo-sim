@@ -1,5 +1,10 @@
 import React from 'react';
-import { SystemParameters, TimeSeriesOutputStep } from '../types/microgrid';
+import {
+  ImportedLoadProfile,
+  SystemParameters,
+  TimeSeriesInputStep,
+  TimeSeriesOutputStep,
+} from '../types/microgrid';
 import {
   Activity,
   AlertTriangle,
@@ -22,6 +27,7 @@ import {
   calculateH2TankVolumeForMass,
   TANK_PRESSURE_PRESETS,
 } from '../simulation/simulationEngine';
+import { CsvLoadProfileImporter } from './CsvLoadProfileImporter';
 
 export type SubsystemId =
   | 'pv'
@@ -41,7 +47,12 @@ interface Props {
   params: SystemParameters;
   onChangeParams: (params: SystemParameters) => void;
   currentStep: TimeSeriesOutputStep | null;
+  dtHours?: number;
+  activeProfileName?: string;
+  importedProfiles?: ImportedLoadProfile[];
   onScaleLoad?: (multiplier: number) => void;
+  onLoadCustomDataset?: (steps: TimeSeriesInputStep[], name: string, dtHours?: number) => void;
+  onSelectImportedProfile?: (profileId: string) => void;
 }
 
 export const SubsystemEditorDrawer: React.FC<Props> = ({
@@ -50,9 +61,16 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
   params,
   onChangeParams,
   currentStep,
+  dtHours = 0.25,
+  activeProfileName,
+  importedProfiles = [],
   onScaleLoad,
+  onLoadCustomDataset,
+  onSelectImportedProfile,
 }) => {
   if (!subsystem) return null;
+
+  const dt_h = dtHours > 0 ? dtHours : 0.25;
 
   const updateNumeric = (key: keyof SystemParameters, value: number) => {
     onChangeParams({
@@ -566,13 +584,13 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 <div>
                   <span className="text-slate-400 text-[10px] block">H₂ Production Rate:</span>
                   <span className="font-bold text-cyan-300">
-                    {currentStep ? ((currentStep.m_h2_prod_kg * 1000) / 0.25).toFixed(1) : '0.0'} g/h
+                    {currentStep ? ((currentStep.m_h2_prod_kg * 1000) / dt_h).toFixed(1) : '0.0'} g/h
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[10px] block">DI Water Feed:</span>
                   <span className="text-slate-200">
-                    {currentStep ? (currentStep.v_di_water_l / 0.25).toFixed(2) : '0.00'} L/h
+                    {currentStep ? (currentStep.v_di_water_l / dt_h).toFixed(2) : '0.00'} L/h
                   </span>
                 </div>
                 <div>
@@ -924,7 +942,7 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 <div>
                   <span className="text-slate-400 text-[10px] block">Fuel Burn Rate:</span>
                   <span className="font-bold text-purple-300">
-                    {currentStep ? ((currentStep.m_h2_cons_kg * 1000) / 0.25).toFixed(1) : '0.0'} g/h
+                    {currentStep ? ((currentStep.m_h2_cons_kg * 1000) / dt_h).toFixed(1) : '0.0'} g/h
                   </span>
                 </div>
               </div>
@@ -1138,13 +1156,13 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
                 <div>
                   <span className="text-slate-400 text-[10px] block">Hot Water Produced:</span>
                   <span className="font-bold text-amber-300">
-                    {currentStep ? ((currentStep.v_hot_water_l || 0) / 0.25).toFixed(1) : '0.0'} L/h
+                    {currentStep ? ((currentStep.v_hot_water_l || 0) / dt_h).toFixed(1) : '0.0'} L/h
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[10px] block">H₂ Burn Rate:</span>
                   <span className="font-bold text-orange-200">
-                    {currentStep ? (((currentStep.m_h2_burned_kg || 0) * 1000) / 0.25).toFixed(1) : '0.0'} g/h
+                    {currentStep ? (((currentStep.m_h2_burned_kg || 0) * 1000) / dt_h).toFixed(1) : '0.0'} g/h
                   </span>
                 </div>
                 <div>
@@ -1273,10 +1291,17 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
         {/* ========================================================= */}
         {subsystem === 'load' && (
           <div className="space-y-3.5">
-            <div className="bg-[#1c0f16] p-2.5 rounded border border-rose-500/40 space-y-1">
-              <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider block">
-                Live Load Demand
-              </span>
+            <div className="bg-[#1c0f16] p-2.5 rounded border border-rose-500/40 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">
+                  Live Load Demand
+                </span>
+                {activeProfileName && (
+                  <span className="text-[9.5px] text-cyan-300 bg-cyan-950/60 border border-cyan-700/50 px-1.5 py-0.5 rounded truncate max-w-[170px]">
+                    {activeProfileName}
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-[11px]">
                 <div>
                   <span className="text-slate-400 text-[10px] block">Active Draw:</span>
@@ -1293,13 +1318,29 @@ export const SubsystemEditorDrawer: React.FC<Props> = ({
               </div>
             </div>
 
+            {onLoadCustomDataset && (
+              <div className="space-y-2 bg-[#0b1220] p-2.5 rounded border border-cyan-500/30">
+                <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider block">
+                  Import Daily Load Profile (CSV)
+                </span>
+                <CsvLoadProfileImporter
+                  variant="compact"
+                  systemScale={params.scale}
+                  activeProfileName={activeProfileName}
+                  importedProfiles={importedProfiles}
+                  onApplyProfile={onLoadCustomDataset}
+                  onSelectExistingProfile={onSelectImportedProfile}
+                />
+              </div>
+            )}
+
             {onScaleLoad && (
               <div className="space-y-3 bg-[#0e1626] p-3 rounded border border-slate-800">
                 <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider block">
                   Quick Load Multiplier
                 </span>
                 <p className="text-[10px] text-slate-400 leading-tight">
-                  Dynamically scale the current profile load demand to stress-test microgrid reserves:
+                  Dynamically scale the active profile load demand to stress-test microgrid reserves:
                 </p>
                 <div className="grid grid-cols-3 gap-1.5 pt-1">
                   {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((mult) => (

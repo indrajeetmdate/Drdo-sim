@@ -1,20 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TimeSeriesOutputStep,
   SystemParameters,
   SimulationSummary,
   TimeSeriesInputStep,
+  ImportedLoadProfile,
 } from '../types/microgrid';
 import { generateSwitchgearAndBom } from '../simulation/switchgearSizer';
-import { parseCsvFile, CsvParseResult } from '../simulation/csvParser';
 import { InteractiveSystemFlowDiagram } from './InteractiveSystemFlowDiagram';
+import { CsvLoadProfileImporter } from './CsvLoadProfileImporter';
 import {
-  AlertCircle,
-  CheckCircle2,
   Cpu,
   Download,
-  FileSpreadsheet,
-  FileText,
   Layers,
   LineChart,
   Search,
@@ -28,10 +25,15 @@ interface Props {
   data: TimeSeriesOutputStep[];
   params: SystemParameters;
   summary: SimulationSummary | null;
-  onLoadCustomDataset: (steps: TimeSeriesInputStep[], name: string) => void;
+  onLoadCustomDataset: (steps: TimeSeriesInputStep[], name: string, dtHours?: number) => void;
   onOpenDiagramModal: () => void;
   activeStep?: TimeSeriesOutputStep | null;
   onSelectStepIndex?: (index: number) => void;
+  activeProfileName?: string;
+  importedProfiles?: ImportedLoadProfile[];
+  onSelectImportedProfile?: (profileId: string) => void;
+  requestedTab?: 'table' | 'csv' | 'bom' | 'diagram' | 'benchmark' | null;
+  onClearRequestedTab?: () => void;
 }
 
 export const BottomInspectorTabs: React.FC<Props> = ({
@@ -42,20 +44,27 @@ export const BottomInspectorTabs: React.FC<Props> = ({
   onOpenDiagramModal,
   activeStep,
   onSelectStepIndex,
+  activeProfileName,
+  importedProfiles = [],
+  onSelectImportedProfile,
+  requestedTab,
+  onClearRequestedTab,
 }) => {
   const [activeTab, setActiveTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark'>('table');
   const [diagramSubView, setDiagramSubView] = useState<'interactive' | 'schematic'>('interactive');
+
+  useEffect(() => {
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      if (onClearRequestedTab) onClearRequestedTab();
+    }
+  }, [requestedTab, onClearRequestedTab]);
 
   // Tab A: Table search & pagination state
   const [tableSearch, setTableSearch] = useState('');
   const [tableStateFilter, setTableStateFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const pageSize = 50;
-
-  // Tab B: CSV upload state
-  const [dragActive, setDragActive] = useState(false);
-  const [csvResult, setCsvResult] = useState<CsvParseResult | null>(null);
-  const [customDatasetName, setCustomDatasetName] = useState('Custom_Load_Profile.csv');
 
   // Filtered table rows
   const filteredRows = useMemo(() => {
@@ -179,36 +188,6 @@ export const BottomInspectorTabs: React.FC<Props> = ({
     document.body.removeChild(link);
   };
 
-  // CSV File Handler
-  const handleFileProcess = (file: File) => {
-    setCustomDatasetName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const res = parseCsvFile(text);
-      setCsvResult(res);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleApplyCustomCsv = () => {
-    if (csvResult && csvResult.success && csvResult.parsedSteps.length > 0) {
-      onLoadCustomDataset(csvResult.parsedSteps, customDatasetName);
-      setActiveTab('table');
-    }
-  };
-
-  // Sample CSV Template Download
-  const handleDownloadSampleCsv = () => {
-    const sample = `timestamp,load_kw,irradiance_wm2,temp_c,wind_speed\n2017-01-01 00:00,0.42,0,18.5,2.1\n2017-01-01 00:15,0.40,0,18.4,2.2\n2017-01-01 06:30,0.56,85,19.2,2.4\n2017-01-01 12:00,0.48,910,28.4,3.5\n2017-01-01 19:15,3.57,0,24.1,2.8`;
-    const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Microgrid_Load_Template.csv';
-    a.click();
-  };
-
   return (
     <div className="min-h-[360px] lg:h-80 flex flex-col bg-[#0a0f1b] border-t border-slate-800 text-slate-300 font-mono text-xs">
       {/* Tab Navigation Header */}
@@ -247,7 +226,7 @@ export const BottomInspectorTabs: React.FC<Props> = ({
             }`}
           >
             <UploadCloud className="w-3.5 h-3.5" />
-            <span>Ingest Custom CSV</span>
+            <span>Import Load Profile CSV</span>
           </button>
 
           <button
@@ -461,156 +440,17 @@ export const BottomInspectorTabs: React.FC<Props> = ({
 
         {/* TAB B: UPLOAD CUSTOM CSV */}
         {activeTab === 'csv' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
-            {/* Upload Drop Zone & Config */}
-            <div className="flex flex-col space-y-3">
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragLeave={() => setDragActive(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragActive(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleFileProcess(e.dataTransfer.files[0]);
-                  }
-                }}
-                className={`flex-1 border-2 border-dashed rounded-lg flex flex-col items-center justify-center p-6 text-center transition cursor-pointer ${
-                  dragActive
-                    ? 'border-cyan-400 bg-cyan-950/20 text-cyan-300'
-                    : 'border-slate-700 bg-[#0d1424] text-slate-400 hover:border-slate-500'
-                }`}
-                onClick={() => {
-                  document.getElementById('csv-file-input')?.click();
-                }}
-              >
-                <input
-                  id="csv-file-input"
-                  type="file"
-                  accept=".csv,.txt"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileProcess(e.target.files[0]);
-                    }
-                  }}
-                />
-                <UploadCloud className="w-8 h-8 text-cyan-400 mb-2" />
-                <p className="font-bold text-slate-200">
-                  Drag & Drop Custom Load / Irradiance CSV here
-                </p>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Supports columns: <code className="text-cyan-300">timestamp</code>,{' '}
-                  <code className="text-rose-300">load_kw</code>,{' '}
-                  <code className="text-amber-300">irradiance_wm2</code>,{' '}
-                  <code className="text-slate-300">temp_c</code>
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={handleDownloadSampleCsv}
-                  className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 underline"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Download Sample CSV Template</span>
-                </button>
-
-                {csvResult?.success && (
-                  <button
-                    onClick={handleApplyCustomCsv}
-                    className="flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold px-4 py-1.5 rounded transition shadow"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Run Simulation on Loaded CSV ({csvResult.parsedSteps.length} rows)</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Parser Results & Live Preview */}
-            <div className="flex flex-col border border-slate-800 rounded bg-[#070b13] p-3 overflow-y-auto">
-              {csvResult ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="font-bold text-slate-200">
-                      Parser Diagnostics: {customDatasetName}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        csvResult.success
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-rose-950 text-rose-300 border border-rose-500/40'
-                      }`}
-                    >
-                      {csvResult.success ? 'READY' : 'PARSE ERROR'}
-                    </span>
-                  </div>
-
-                  {csvResult.warnings.length > 0 && (
-                    <div className="p-2 rounded bg-amber-950/40 border border-amber-600/40 text-amber-300 text-[10px] space-y-1">
-                      {csvResult.warnings.map((w, idx) => (
-                        <div key={idx} className="flex items-start gap-1.5">
-                          <AlertCircle className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
-                          <span>{w}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-400">
-                    <div>
-                      Delimiter: <strong className="text-slate-200">"{csvResult.detectedDelimiter}"</strong>
-                    </div>
-                    <div>
-                      Time Step: <strong className="text-cyan-300">{csvResult.detectedDtHours * 60} min</strong>
-                    </div>
-                    <div>
-                      Total Rows: <strong className="text-slate-200">{csvResult.rawRowsCount}</strong>
-                    </div>
-                  </div>
-
-                  {/* Preview Table */}
-                  {csvResult.previewRows.length > 0 && (
-                    <div className="overflow-x-auto border border-slate-800 rounded">
-                      <table className="w-full text-left text-[10px]">
-                        <thead>
-                          <tr className="bg-[#121929] text-slate-400">
-                            {csvResult.headers.map((h, i) => (
-                              <th key={i} className="p-1 border-r border-slate-800">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/60">
-                          {csvResult.previewRows.map((row, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-slate-800/20">
-                              {csvResult.headers.map((h, cIdx) => (
-                                <td key={cIdx} className="p-1 border-r border-slate-800/60 text-slate-300">
-                                  {row[h]}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center p-6">
-                  <FileText className="w-8 h-8 mb-2 text-slate-600" />
-                  <p>No CSV file uploaded yet.</p>
-                  <p className="text-[10px] text-slate-600 mt-1">
-                    Upload your measured smart meter or microgrid log file to inspect headers and simulation results.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <CsvLoadProfileImporter
+            variant="full"
+            systemScale={params.scale}
+            activeProfileName={activeProfileName}
+            importedProfiles={importedProfiles}
+            onApplyProfile={(steps, name, dt) => {
+              onLoadCustomDataset(steps, name, dt);
+              setActiveTab('table');
+            }}
+            onSelectExistingProfile={onSelectImportedProfile}
+          />
         )}
 
         {/* TAB C: MASTER BOM & SWITCHGEAR SIZING */}
@@ -771,7 +611,12 @@ export const BottomInspectorTabs: React.FC<Props> = ({
                   currentStep={activeStep || data[0] || null}
                   allSteps={data}
                   params={params}
+                  dtHours={summary?.dt_hours}
+                  activeProfileName={activeProfileName}
+                  importedProfiles={importedProfiles}
                   onSelectStepIndex={onSelectStepIndex}
+                  onLoadCustomDataset={onLoadCustomDataset}
+                  onSelectImportedProfile={onSelectImportedProfile}
                   onToggleFullscreen={onOpenDiagramModal}
                 />
               </div>

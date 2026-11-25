@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  ImportedLoadProfile,
   SystemParameters,
   TimeSeriesInputStep,
   TimeSeriesOutputStep,
@@ -11,7 +12,7 @@ import {
   DEFAULT_PARAMETERS_1_TO_10,
   PRESET_SCENARIOS,
 } from './src/simulation/benchmarkDatasets';
-import { runSimulation } from './src/simulation/simulationEngine';
+import { inferDtHoursFromSteps, runSimulation } from './src/simulation/simulationEngine';
 import { KpiAuditRibbon } from './src/components/KpiAuditRibbon';
 import { ParameterMatrixSidebar } from './src/components/ParameterMatrixSidebar';
 import { SynchronizedPlots } from './src/components/SynchronizedPlots';
@@ -49,6 +50,8 @@ export default function App() {
   });
   const [customDatasetActive, setCustomDatasetActive] = useState<boolean>(false);
   const [customDatasetName, setCustomDatasetName] = useState<string>('');
+  const [datasetDtHours, setDatasetDtHours] = useState<number>(0.25);
+  const [importedProfiles, setImportedProfiles] = useState<ImportedLoadProfile[]>([]);
 
   // Simulation Results State
   const [outputSteps, setOutputSteps] = useState<TimeSeriesOutputStep[]>([]);
@@ -68,6 +71,7 @@ export default function App() {
   // Live Flow Fullscreen and Layout States
   const [isLiveFlowFullscreen, setIsLiveFlowFullscreen] = useState<boolean>(false);
   const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+  const [requestedBottomTab, setRequestedBottomTab] = useState<'table' | 'csv' | 'bom' | 'diagram' | 'benchmark' | null>(null);
 
   // Modals State
   const [isAutoSizingOpen, setIsAutoSizingOpen] = useState<boolean>(false);
@@ -85,11 +89,11 @@ export default function App() {
 
   // Execute Simulation Core
   const executeSimulation = useCallback(
-    (steps: TimeSeriesInputStep[], currentParams: SystemParameters) => {
+    (steps: TimeSeriesInputStep[], currentParams: SystemParameters, dtHint?: number) => {
       const tStart = performance.now();
       try {
-        const dt = steps.length > 0 && steps[1] ? steps[1].hour - steps[0].hour : 0.25;
-        const validDt = dt > 0 && dt <= 1.0 ? dt : 0.25;
+        const dt = dtHint && dtHint > 0 ? dtHint : inferDtHoursFromSteps(steps, 0.25);
+        const validDt = dt > 0 && dt <= 24.0 ? dt : 0.25;
         const result = runSimulation(steps, currentParams, validDt);
         const tEnd = performance.now();
 
@@ -97,7 +101,7 @@ export default function App() {
         setSummary(result.summary);
         setSolverExecutionTimeMs(Math.round((tEnd - tStart) * 100) / 100);
 
-        // Keep active step in sync (default to midday solar peak on initial load so diagram is alive)
+        // Keep active step in sync (preserve matching hour across different dataset resolutions, or default to midday peak)
         if (result.steps.length > 0) {
           setActiveStep((prev) => {
             if (!prev) {
@@ -105,7 +109,19 @@ export default function App() {
               return middayStep || result.steps[Math.floor(result.steps.length / 2)] || result.steps[0];
             }
             const found = result.steps.find((s) => s.step === prev.step);
-            return found || result.steps[0];
+            if (found && Math.abs(found.hour - prev.hour) < 0.01) {
+              return found;
+            }
+            let nearest = result.steps[0];
+            let minDiff = Math.abs(nearest.hour - prev.hour);
+            for (const s of result.steps) {
+              const diff = Math.abs(s.hour - prev.hour);
+              if (diff < minDiff) {
+                minDiff = diff;
+                nearest = s;
+              }
+            }
+            return nearest;
           });
         }
       } catch (err) {
@@ -118,9 +134,9 @@ export default function App() {
   // Initial & Auto re-run trigger
   useEffect(() => {
     if (autoRecompute) {
-      executeSimulation(inputSteps, params);
+      executeSimulation(inputSteps, params, datasetDtHours);
     }
-  }, [inputSteps, params, autoRecompute, executeSimulation]);
+  }, [inputSteps, params, datasetDtHours, autoRecompute, executeSimulation]);
 
   // Handle Preset Switching
   const handleSelectPreset = (presetId: string) => {
@@ -131,6 +147,7 @@ export default function App() {
     if (!preset) return;
 
     const newSteps = preset.generator();
+    setDatasetDtHours(preset.dt_hours);
     setInputSteps(newSteps);
 
     // If 1:10 scale preset selected, switch parameters to 1:10 scale
@@ -147,11 +164,56 @@ export default function App() {
     }
   };
 
-  // Handle Custom Dataset Ingestion
-  const handleLoadCustomDataset = (steps: TimeSeriesInputStep[], name: string) => {
+  // Handle Custom Dataset Ingestion (and store in importedProfiles switcher)
+  const handleLoadCustomDataset = (steps: TimeSeriesInputStep[], name: string, dtHours?: number) => {
+    const resolvedDt = dtHours && dtHours > 0 ? dtHours : inferDtHoursFromSteps(steps, 0.25);
+    const peakKw = steps.length > 0 ? Math.max(...steps.map((s) => s.p_load_kw)) : 0;
+    const sumKw = steps.reduce((acc, s) => acc + s.p_load_kw, 0);
+    const avgKw = steps.length > 0 ? sumKw / steps.length : 0;
+    const totalHours = steps.length * resolvedDt;
+    const dailyKwh = (sumKw * resolvedDt) / (totalHours >= 23.5 ? totalHours / 24.0 : 1.0);
+
+    setImportedProfiles((prev) => {
+      const existingIdx = prev.findIndex((p) => p.name === name);
+      const entry: ImportedLoadProfile = {
+        id: existingIdx >= 0 ? prev[existingIdx].id : `csv-${Date.now()}`,
+        name,
+        steps,
+        dt_hours: resolvedDt,
+        peak_kw: peakKw,
+        avg_kw: avgKw,
+        daily_kwh: dailyKwh,
+        source_rows: steps.length,
+      };
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = entry;
+        return next;
+      }
+      return [entry, ...prev];
+    });
+
     setCustomDatasetActive(true);
     setCustomDatasetName(name);
+    setDatasetDtHours(resolvedDt);
     setInputSteps(steps);
+    setActiveStep(null);
+  };
+
+  // Switch between previously imported CSV load profiles
+  const handleSelectImportedProfile = (profileId: string) => {
+    const prof = importedProfiles.find((p) => p.id === profileId);
+    if (!prof) return;
+    setCustomDatasetActive(true);
+    setCustomDatasetName(prof.name);
+    setDatasetDtHours(prof.dt_hours);
+    setInputSteps(prof.steps);
+    setActiveStep(null);
+  };
+
+  const handleOpenCsvImporter = () => {
+    setIsBottomCollapsed(false);
+    setRequestedBottomTab('csv');
   };
 
   // Handle Parameter Reset
@@ -338,6 +400,11 @@ export default function App() {
             onResetDefaults={handleResetDefaults}
             autoRecompute={autoRecompute}
             onToggleAutoRecompute={setAutoRecompute}
+            customDatasetActive={customDatasetActive}
+            customDatasetName={customDatasetName}
+            importedProfiles={importedProfiles}
+            onSelectImportedProfile={handleSelectImportedProfile}
+            onOpenCsvImporter={handleOpenCsvImporter}
           />
         </div>
 
@@ -352,9 +419,18 @@ export default function App() {
                   currentStep={activeStep}
                   allSteps={outputSteps}
                   params={params}
+                  dtHours={summary?.dt_hours ?? datasetDtHours}
+                  activeProfileName={
+                    customDatasetActive
+                      ? customDatasetName
+                      : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name
+                  }
+                  importedProfiles={importedProfiles}
                   onSelectStepIndex={handleSelectStepIndex}
                   onChangeParams={setParams}
                   onScaleLoad={handleScaleLoad}
+                  onLoadCustomDataset={handleLoadCustomDataset}
+                  onSelectImportedProfile={handleSelectImportedProfile}
                   isFullscreen={isLiveFlowFullscreen}
                   onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
                 />
@@ -376,9 +452,18 @@ export default function App() {
                     currentStep={activeStep}
                     allSteps={outputSteps}
                     params={params}
+                    dtHours={summary?.dt_hours ?? datasetDtHours}
+                    activeProfileName={
+                      customDatasetActive
+                        ? customDatasetName
+                        : PRESET_SCENARIOS.find((p) => p.id === activePresetId)?.name
+                    }
+                    importedProfiles={importedProfiles}
                     onSelectStepIndex={handleSelectStepIndex}
                     onChangeParams={setParams}
                     onScaleLoad={handleScaleLoad}
+                    onLoadCustomDataset={handleLoadCustomDataset}
+                    onSelectImportedProfile={handleSelectImportedProfile}
                     isFullscreen={isLiveFlowFullscreen}
                     onToggleFullscreen={() => setIsLiveFlowFullscreen((prev) => !prev)}
                   />
@@ -413,6 +498,11 @@ export default function App() {
                 onLoadCustomDataset={handleLoadCustomDataset}
                 activeStep={activeStep}
                 onSelectStepIndex={handleSelectStepIndex}
+                activeProfileName={customDatasetActive ? customDatasetName : undefined}
+                importedProfiles={importedProfiles}
+                onSelectImportedProfile={handleSelectImportedProfile}
+                requestedTab={requestedBottomTab}
+                onClearRequestedTab={() => setRequestedBottomTab(null)}
                 onOpenDiagramModal={() =>
                   setDiagramModal({
                     isOpen: true,
@@ -463,6 +553,17 @@ export default function App() {
               autoRecompute={autoRecompute}
               onToggleAutoRecompute={setAutoRecompute}
               onCloseMobile={() => setIsMobileSidebarOpen(false)}
+              customDatasetActive={customDatasetActive}
+              customDatasetName={customDatasetName}
+              importedProfiles={importedProfiles}
+              onSelectImportedProfile={(id) => {
+                handleSelectImportedProfile(id);
+                setIsMobileSidebarOpen(false);
+              }}
+              onOpenCsvImporter={() => {
+                handleOpenCsvImporter();
+                setIsMobileSidebarOpen(false);
+              }}
             />
           </div>
         </div>

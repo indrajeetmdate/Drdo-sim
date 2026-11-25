@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { TimeSeriesOutputStep, SystemParameters } from '../types/microgrid';
+import { inferDtHoursFromSteps } from '../simulation/simulationEngine';
 import {
   Calendar,
   Clock,
@@ -18,6 +19,11 @@ interface Props {
 
 export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const stepsPerDay = useMemo(() => {
+    const dt = inferDtHoursFromSteps(data, 0.25);
+    return Math.max(1, Math.round(24.0 / dt));
+  }, [data]);
 
   // Time window range for zoom & pan: [startIndex, endIndex]
   const [windowRange, setWindowRange] = useState<[number, number]>([0, data.length - 1]);
@@ -54,7 +60,7 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
     if (days === 'all') {
       setWindowRange([0, data.length - 1]);
     } else {
-      const stepsToFit = Math.min(data.length, Math.round(days * 96));
+      const stepsToFit = Math.min(data.length, Math.round(days * stepsPerDay));
       setWindowRange([0, stepsToFit - 1]);
     }
   };
@@ -158,7 +164,7 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
 
           // Time label: show Day X if > 1 day, else HH:MM
           let label = step.timestamp.split(' ')[1] || `${step.hour.toFixed(1)}h`;
-          if (data.length > 96) {
+          if (data.length > stepsPerDay) {
             const datePart = step.timestamp.split(' ')[0];
             const dayPart = datePart.split('-')[2] || `D${step.day}`;
             label = `D${dayPart} ${label}`;
@@ -540,7 +546,7 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
 
       drawCrosshair(ctx, w, h);
     });
-  }, [data, startIndex, endIndex, hoverIndex, params]);
+  }, [data, startIndex, endIndex, hoverIndex, params, stepsPerDay]);
 
   // Handle Mouse Hover / Scrubbing across plots
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -614,7 +620,7 @@ export const SynchronizedPlots: React.FC<Props> = ({ data, params, onHoverStep }
             onClick={() => handleZoomPreset('all')}
             className="px-2 py-0.5 bg-[#141e33] hover:bg-[#1b2b4a] text-cyan-300 font-bold rounded border border-slate-700/60 transition text-[11px]"
           >
-            All ({data.length > 96 ? `${(data.length / 96).toFixed(0)}d` : '96pts'})
+            All ({data.length > stepsPerDay ? `${(data.length / stepsPerDay).toFixed(0)}d` : `${data.length}pts`})
           </button>
           <button
             onClick={() => setWindowRange([0, data.length - 1])}

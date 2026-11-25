@@ -10,6 +10,7 @@ import {
   TimeSeriesOutputStep,
   SimulationSummary,
   DispatchState,
+  H2BurnerMode,
 } from '../types/microgrid';
 
 /**
@@ -180,6 +181,24 @@ export const TANK_PRESSURE_PRESETS = [
   { value: 350, label: '350 bar (Type IV Composite Stationary)', desc: 'Stationary high-pressure composite tank' },
   { value: 700, label: '700 bar (Type IV Mobility Composite)', desc: 'Ultra-high-pressure carbon composite vessel' },
 ] as const;
+
+/**
+ * Infer median discrete time step delta (in hours) from a time-series step array.
+ */
+export function inferDtHoursFromSteps(steps: { hour: number }[], fallbackDt: number = 0.25): number {
+  if (!steps || steps.length < 2) return fallbackDt;
+  const diffs: number[] = [];
+  for (let i = 1; i < Math.min(steps.length, 200); i++) {
+    let dh = steps[i].hour - steps[i - 1].hour;
+    if (dh < -1e-6 && dh > -24.0) dh += 24.0;
+    if (dh > 1e-6 && dh <= 24.0) {
+      diffs.push(Math.round(dh * 10000) / 10000);
+    }
+  }
+  if (diffs.length === 0) return fallbackDt;
+  diffs.sort((a, b) => a - b);
+  return diffs[Math.floor(diffs.length / 2)];
+}
 
 /**
  * Helper to allocate surplus solar generation to PEM Electrolyzer and pressurized storage cylinder

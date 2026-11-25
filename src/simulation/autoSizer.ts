@@ -9,13 +9,14 @@ import {
   SystemParameters,
   TimeSeriesInputStep,
 } from '../types/microgrid';
+import { inferDtHoursFromSteps } from './simulationEngine';
 
 export function solveMicrogridComponentSizes(
   inputs: TimeSeriesInputStep[],
   targets: AutoSizingTargets,
   currentParams: SystemParameters
 ): SizingRecommendation {
-  const dt = 0.25;
+  const dt = inferDtHoursFromSteps(inputs, 0.25);
   const isScale10 = currentParams.scale === '1:10';
   const scaleMultiplier = isScale10 ? 0.1 : 1.0;
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SystemParameters, PresetScenario } from '../types/microgrid';
+import { SystemParameters, PresetScenario, ImportedLoadProfile } from '../types/microgrid';
 import {
   adjustTankForPressure,
   calculateH2TankVolumeForMass,
@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Sliders,
   Sun,
+  UploadCloud,
   Wand2,
   Zap,
 } from 'lucide-react';
@@ -31,6 +32,11 @@ interface Props {
   autoRecompute: boolean;
   onToggleAutoRecompute: (val: boolean) => void;
   onCloseMobile?: () => void;
+  customDatasetActive?: boolean;
+  customDatasetName?: string;
+  importedProfiles?: ImportedLoadProfile[];
+  onSelectImportedProfile?: (profileId: string) => void;
+  onOpenCsvImporter?: () => void;
 }
 
 export const ParameterMatrixSidebar: React.FC<Props> = ({
@@ -45,6 +51,11 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
   autoRecompute,
   onToggleAutoRecompute,
   onCloseMobile,
+  customDatasetActive = false,
+  customDatasetName = '',
+  importedProfiles = [],
+  onSelectImportedProfile,
+  onOpenCsvImporter,
 }) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     solar: false,
@@ -103,21 +114,58 @@ export const ParameterMatrixSidebar: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Preset Selector */}
-        <div>
-          <label className="text-[10px] uppercase font-mono tracking-wider text-slate-400 block mb-1">
-            Active Dataset / Scenario
-          </label>
+        {/* Preset & Imported CSV Load Profile Selector */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] uppercase font-mono tracking-wider text-slate-400">
+              Active Dataset / Load Profile
+            </label>
+            {onOpenCsvImporter && (
+              <button
+                type="button"
+                onClick={onOpenCsvImporter}
+                className="flex items-center gap-1 text-[10px] font-mono text-cyan-300 hover:text-white bg-cyan-950/70 hover:bg-cyan-800/70 border border-cyan-600/50 rounded px-1.5 py-0.5 transition"
+                title="Import Load Profile CSV (Active Power vs Time in Hours)"
+              >
+                <UploadCloud className="w-3 h-3" />
+                <span>Import CSV</span>
+              </button>
+            )}
+          </div>
           <select
-            value={activePresetId}
-            onChange={(e) => onSelectPreset(e.target.value)}
+            value={
+              customDatasetActive
+                ? `custom:${
+                    importedProfiles.find((p) => p.name === customDatasetName)?.id || 'active'
+                  }`
+                : activePresetId
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v.startsWith('custom:') && onSelectImportedProfile) {
+                onSelectImportedProfile(v.slice('custom:'.length));
+              } else {
+                onSelectPreset(v);
+              }
+            }}
             className="w-full bg-[#131d31] border border-slate-700 rounded px-2 py-1.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500"
           >
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            {importedProfiles.length > 0 && (
+              <optgroup label="Imported Load Profiles (CSV)">
+                {importedProfiles.map((prof) => (
+                  <option key={prof.id} value={`custom:${prof.id}`}>
+                    CSV: {prof.name} ({prof.peak_kw.toFixed(2)} kW pk)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Built-in Benchmark Presets">
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
